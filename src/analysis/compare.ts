@@ -1,12 +1,28 @@
-import { findBuffId } from '../model/normalize.ts';
-import type { NormalizedPlayer } from '../model/normalize.ts';
-import { compactNumber, count, percent } from './format.ts';
-import type { Check, Finding } from './types.ts';
-
-const TRACKED_BOONS = ['Alacrity', 'Quickness', 'Fury', 'Might'];
+import {
+  damageModifierSourceLabel,
+  findBuffId,
+  formatDamageModifierName,
+  type DamageModifierSource,
+  type NormalizedPlayer,
+} from '../model/normalize.ts';
+import { boonsForRole } from './boonRole.ts';
+import { measureAutoAttackChains } from './checks/autoAttackChain.ts';
+import { measureCancelledCasts } from './checks/wastedCasts.ts';
+import { compactNumber, count, duration, percent } from './format.ts';
+import type { Check, Finding, Metric, Severity } from './types.ts';
 
 /** Ignore skills that differ by less than this many casts per minute. */
 const MIN_RATE_DELTA = 0.75;
+
+/** Aborted-cast waste-share gap treated as in line. */
+const WASTE_SHARE_SIMILAR = 0.005;
+/** Aborted-cast waste-share gap that becomes a warning. */
+const WASTE_SHARE_WARNING = 0.015;
+
+/** Chain completion points below the reference treated as in line. */
+const CHAIN_RATE_SIMILAR = 0.05;
+/** Chain completion points below the reference that become a warning. */
+const CHAIN_RATE_WARNING = 0.15;
 
 interface CastRate {
   name: string;
@@ -26,22 +42,24 @@ function castRates(player: NormalizedPlayer): Map<string, CastRate> {
 }
 
 /**
- * Diffs the analyzed log against a reference log. Everything is normalized to
- * casts per minute of active time so a 3 minute kill can be compared against a
- * 5 minute one.
+ * Diffs the analyzed log against a reference log. Idle time and casts left on
+ * cooldown are compared on those checks' own cards; this check covers DPS, cast
+ * rates, aborted casts, auto chains, boons and gear/consumable/trait bonuses.
  */
 export const referenceLogCheck: Check = {
   id: 'reference-log',
   name: 'Reference log comparison',
-  description: 'Compares your casts, boons, damage modifiers and DPS against a second log.',
+  description:
+    'Compares DPS, cast rates, aborted casts, auto chains, boons and food/utility/relic/trait bonuses against a second log. Idle time and cooldown holds are shown on those findings when a reference is present.',
 
   applicable: ({ reference }) => (reference ? undefined : 'No reference log was provided.'),
 
-  run: ({ log, player, reference }) => {
+  run: ({ log, player, window, skills, reference }) => {
     if (!reference) return [];
 
     const findings: Finding[] = [];
     const theirs = reference.player;
+    const theirWindow = reference.log.fullFight;
 
     if (player.profession !== theirs.profession) {
       findings.push({
@@ -50,7 +68,7 @@ export const referenceLogCheck: Check = {
         severity: 'info',
         title: `Comparing ${player.profession} against ${theirs.profession}`,
         summary:
-          'The two logs are different specializations, so skill-by-skill differences below are not meaningful. Boon uptime and DPS still are.',
+          'The two logs are different specializations, so skill-by-skill differences below are not meaningful. Idle time, aborted casts, boon uptime and DPS still are.',
       });
     }
 
@@ -73,6 +91,104 @@ export const referenceLogCheck: Check = {
       ],
     });
 
+    // --- Aborted casts (time wasted before skill fires) ---
+    const myWaste = measureCancelledCasts(player, window);
+    const theirWaste = measureCancelledCasts(theirs, theirWindow);
+    if (myWaste.abortedCount > 0 || theirWaste.abortedCount > 0) {
+      findings.push(
+        compareAgainstReference({
+          id: 'reference-log/aborted-casts',
+          delta: myWaste.wasteShare - theirWaste.wasteShare,
+          similar: WASTE_SHARE_SIMILAR,
+          warning: WASTE_SHARE_WARNING,
+          labels: {
+            better: `${duration(myWaste.wastedMs)} aborted, cleaner than the reference`,
+            similar: `${duration(myWaste.wastedMs)} aborted, in line with the reference`,
+            info: `${duration(myWaste.wastedMs)} aborted, more than the reference`,
+            warning: `${duration(myWaste.wastedMs)} aborted, well above the reference`,
+          },
+          summaries: {
+            better: `You lost ${percent(myWaste.wasteShare, 1)} of the fight to casts interrupted before firing against ${percent(theirWaste.wasteShare, 1)} in the reference.`,
+            similar: `You lost ${percent(myWaste.wasteShare, 1)} of the fight to aborted casts against ${percent(theirWaste.wasteShare, 1)} in the reference. That level of interruption looks normal here.`,
+            info: `Aborted casts cost you ${percent(myWaste.wasteShare, 1)} of the fight versus ${percent(theirWaste.wasteShare, 1)} in the reference${myWaste.worst[0] ? `. Worst skill: ${myWaste.worst[0].name}` : ''}.`,
+            warning: `You threw away ${duration(myWaste.wastedMs)} on interrupted casts (${percent(myWaste.wasteShare, 1)}) while the reference only lost ${duration(theirWaste.wastedMs)} (${percent(theirWaste.wasteShare, 1)})${myWaste.worst[0] ? `. Focus on ${myWaste.worst[0].name}` : ''}.`,
+          },
+          fix: {
+            info: 'Commit to casts you start, or do not press them when you know you will have to move.',
+            warning:
+              'If the reference kept these skills finishing, stop cancelling them mid-animation — dodge or move between casts instead.',
+          },
+          detail:
+            'Only casts aborted before they fired count here. Deliberate aftercast cancels are a good thing and are not compared as waste.',
+          metrics: [
+            {
+              label: 'Your aborted time',
+              display: `${duration(myWaste.wastedMs)} (${percent(myWaste.wasteShare, 1)})`,
+              value: myWaste.wasteShare * 100,
+              target: theirWaste.wasteShare * 100,
+              higherIsBetter: false,
+            },
+            {
+              label: 'Reference aborted time',
+              display: `${duration(theirWaste.wastedMs)} (${percent(theirWaste.wasteShare, 1)})`,
+              value: theirWaste.wasteShare * 100,
+              higherIsBetter: false,
+            },
+          ],
+          impactScale: { info: 200, warning: 300, cap: { info: 6, warning: 12 } },
+        }),
+      );
+    }
+
+    // --- Auto-attack chain completion ---
+    if (skills) {
+      const myChains = measureAutoAttackChains(player, skills);
+      const theirChains = measureAutoAttackChains(theirs, skills);
+      if (myChains.attempts >= 5 && theirChains.attempts >= 5) {
+        // Higher completion is better, so delta is reference - yours.
+        const delta = theirChains.completionRate - myChains.completionRate;
+        findings.push(
+          compareAgainstReference({
+            id: 'reference-log/auto-chains',
+            delta,
+            similar: CHAIN_RATE_SIMILAR,
+            warning: CHAIN_RATE_WARNING,
+            labels: {
+              better: `${percent(myChains.completionRate)} chain completion, ahead of the reference`,
+              similar: `${percent(myChains.completionRate)} chain completion, in line with the reference`,
+              info: `${percent(myChains.completionRate)} chain completion, below the reference`,
+              warning: `${percent(myChains.completionRate)} chain completion, well below the reference`,
+            },
+            summaries: {
+              better: `You finished ${myChains.completed} of ${myChains.attempts} auto chains against the reference's ${percent(theirChains.completionRate)}.`,
+              similar: `You finished ${percent(myChains.completionRate)} of auto chains against ${percent(theirChains.completionRate)} in the reference. That looks normal for this fight.`,
+              info: `You completed ${percent(myChains.completionRate)} of chains versus ${percent(theirChains.completionRate)} in the reference. The final auto hit is the hard-hitting one.`,
+              warning: `Chain completion sat at ${percent(myChains.completionRate)} against ${percent(theirChains.completionRate)} in the reference — you are restarting chains mid-swing much more often.`,
+            },
+            fix: {
+              info: 'Let the chain finish before repositioning when the reference was able to.',
+              warning: 'Stop cutting autos short. Move between swings, not during them.',
+            },
+            metrics: [
+              {
+                label: 'Your chain completion',
+                display: percent(myChains.completionRate),
+                value: myChains.completionRate * 100,
+                target: theirChains.completionRate * 100,
+              },
+              {
+                label: 'Reference chain completion',
+                display: percent(theirChains.completionRate),
+                value: theirChains.completionRate * 100,
+              },
+            ],
+            impactScale: { info: 20, warning: 40, cap: { info: 5, warning: 10 } },
+          }),
+        );
+      }
+    }
+
+    // --- Cast rates ---
     const mine = castRates(player);
     const ref = castRates(theirs);
     const under: { name: string; mine: number; theirs: number }[] = [];
@@ -100,9 +216,17 @@ export const referenceLogCheck: Check = {
         })),
         impact: Math.min(10, under.length * 1.5),
       });
+    } else if (ref.size > 0 && player.profession === theirs.profession) {
+      findings.push({
+        id: 'reference-log/casts',
+        checkId: 'reference-log',
+        severity: 'good',
+        title: 'Cast rates in line with the reference',
+        summary: `None of the reference skills were cast materially less often on a per-minute basis.`,
+      });
     }
 
-    for (const boonName of TRACKED_BOONS) {
+    for (const boonName of boonsForRole(log, player, undefined)) {
       const myBuffId = findBuffId(log, boonName);
       const theirBuffId = findBuffId(reference.log, boonName);
       if (myBuffId === undefined || theirBuffId === undefined) continue;
@@ -132,6 +256,7 @@ export const referenceLogCheck: Check = {
     const modGaps = theirs.damageModifiers
       .map((mod) => ({
         name: mod.name,
+        source: (mod.source ?? myMods.get(mod.name)?.source ?? 'other') as DamageModifierSource,
         mine: myMods.get(mod.name)?.hitRatio ?? 0,
         theirs: mod.hitRatio,
       }))
@@ -139,17 +264,18 @@ export const referenceLogCheck: Check = {
       .sort((a, b) => b.theirs - b.mine - (a.theirs - a.mine));
 
     if (modGaps.length > 0) {
+      const top = modGaps[0];
       findings.push({
         id: 'reference-log/damage-modifiers',
         checkId: 'reference-log',
         severity: 'info',
-        title: `${count(modGaps.length, 'damage modifier')} applied to fewer of your hits`,
-        summary: `${modGaps[0].name} covered ${percent(modGaps[0].mine)} of your hits against ${percent(modGaps[0].theirs)} in the reference log.`,
+        title: titleForBonusGaps(modGaps),
+        summary: `${formatDamageModifierName(top)} covered ${percent(top.mine)} of your hits against ${percent(top.theirs)} in the reference log.`,
         detail:
-          'Damage modifiers are conditional multipliers from traits, relics and food. A lower hit coverage means you were meeting the condition less often, which is usually a rotation or positioning difference.',
+          'These are conditional bonuses from food, utility consumables, relics, sigils, runes, traits or skills. Lower hit coverage means you met the condition less often — usually a rotation or positioning difference.',
         evidence: modGaps.slice(0, 6).map((entry) => ({
           time: 0,
-          label: `${entry.name}: ${percent(entry.mine)} vs ${percent(entry.theirs)} of hits`,
+          label: `${formatDamageModifierName(entry)}: ${percent(entry.mine)} vs ${percent(entry.theirs)} of hits`,
         })),
         impact: Math.min(6, modGaps.length),
       });
@@ -158,3 +284,84 @@ export const referenceLogCheck: Check = {
     return findings;
   },
 };
+
+function titleForBonusGaps(
+  gaps: Array<{ name: string; source: DamageModifierSource }>,
+): string {
+  if (gaps.length === 1) {
+    return `${formatDamageModifierName(gaps[0])} covered fewer of your hits`;
+  }
+
+  const labels = [...new Set(gaps.map((gap) => damageModifierSourceLabel(gap.source)))];
+  if (labels.length === 1) {
+    const kind = labels[0].toLowerCase();
+    return `${count(gaps.length, `${kind} bonus`)} covered fewer of your hits`;
+  }
+
+  const list =
+    labels.length === 2
+      ? `${labels[0].toLowerCase()} and ${labels[1].toLowerCase()}`
+      : `${labels
+          .slice(0, -1)
+          .map((label) => label.toLowerCase())
+          .join(', ')} and ${labels[labels.length - 1].toLowerCase()}`;
+  return `${list} bonuses covered fewer of your hits`;
+}
+
+interface CompareArgs {
+  id: string;
+  /** Positive means the player is worse on a "lower is better" metric (or behind on a higher-is-better metric already inverted). */
+  delta: number;
+  similar: number;
+  warning: number;
+  labels: { better: string; similar: string; info: string; warning: string };
+  summaries: { better: string; similar: string; info: string; warning: string };
+  fix?: { info?: string; warning?: string };
+  detail?: string;
+  caveat?: string;
+  metrics: Metric[];
+  evidence?: Finding['evidence'];
+  impactScale: { info: number; warning: number; cap: { info: number; warning: number } };
+}
+
+/** Shared severity ladder for "is this worse than the reference?" findings. */
+function compareAgainstReference(args: CompareArgs): Finding {
+  let severity: Severity;
+  let title: string;
+  let summary: string;
+  let fix: string | undefined;
+  let impact: number | undefined;
+
+  if (args.delta <= args.similar) {
+    severity = 'good';
+    const better = args.delta <= -args.similar;
+    title = better ? args.labels.better : args.labels.similar;
+    summary = better ? args.summaries.better : args.summaries.similar;
+  } else if (args.delta > args.warning) {
+    severity = 'warning';
+    title = args.labels.warning;
+    summary = args.summaries.warning;
+    fix = args.fix?.warning;
+    impact = Math.min(args.impactScale.cap.warning, args.delta * args.impactScale.warning);
+  } else {
+    severity = 'info';
+    title = args.labels.info;
+    summary = args.summaries.info;
+    fix = args.fix?.info;
+    impact = Math.min(args.impactScale.cap.info, args.delta * args.impactScale.info);
+  }
+
+  return {
+    id: args.id,
+    checkId: 'reference-log',
+    severity,
+    title,
+    summary,
+    detail: args.detail,
+    fix,
+    caveat: args.caveat,
+    metrics: args.metrics,
+    evidence: args.evidence,
+    impact,
+  };
+}

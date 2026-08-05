@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import mesmerSnapshot from '../data/gw2/mesmer.json';
 import { SkillIndex, type ProfessionSnapshot } from './gw2.ts';
-import { MetaBattleError, metaBattlePageFromInput, parseMetaBattlePage } from './metabattle.ts';
+import {
+  MetaBattleError,
+  inferDamageFocus,
+  metaBattlePageFromInput,
+  parseMetaBattlePage,
+  parseRaidBuildTitle,
+  scoreRaidBuildVariant,
+} from './metabattle.ts';
+import type { NormalizedPlayer } from '../model/normalize.ts';
 
 const skills = new SkillIndex(mesmerSnapshot as unknown as ProfessionSnapshot);
 
@@ -27,7 +35,7 @@ code = [&DQcBHRgdQj8jDyMPgQGBAYMBgwHdGoIB5RrtEgAAAAAAAAAAAAAAAAAAAAA=]
 |healing = Signet of the Ether
 |utility1 = Rain of Swords
 |utility2 = Signet of Midnight
-|utility3 = Signet of Domination
+||utility3 = Signet of Domination
 |elite = Thousand Cuts
 }}
 == Overview ==
@@ -42,6 +50,7 @@ describe('parseMetaBattlePage', () => {
     expect(parsed.url).toContain('metabattle.com/wiki/Build');
     // "X" marks an empty weapon slot.
     expect(parsed.build.weapons).toEqual(['Dagger', 'Sword', 'Focus']);
+    expect(parsed.build.eliteSpec).toBe('Virtuoso');
   });
 
   it('resolves skills and traits from the template code rather than the prose', () => {
@@ -81,5 +90,42 @@ describe('metaBattlePageFromInput', () => {
   it('rejects anything else', () => {
     expect(metaBattlePageFromInput('https://snowcrows.com/builds/raids/mesmer')).toBeUndefined();
     expect(metaBattlePageFromInput('just some text')).toBeUndefined();
+  });
+});
+
+describe('raid build ranking', () => {
+  it('parses MetaBattle raid page titles', () => {
+    expect(parseRaidBuildTitle('Build:Dragonhunter - Power DPS')).toEqual({
+      eliteSpec: 'Dragonhunter',
+      variant: 'Power DPS',
+    });
+  });
+
+  it('prefers pure DPS raid pages over support and open-world content', () => {
+    expect(scoreRaidBuildVariant('Power DPS', 'power')).toBeGreaterThan(
+      scoreRaidBuildVariant('Quickness Support Power DPS', 'power'),
+    );
+    expect(scoreRaidBuildVariant('Condi DPS', 'condition')).toBeGreaterThan(
+      scoreRaidBuildVariant('Power DPS', 'condition'),
+    );
+    expect(scoreRaidBuildVariant('Open world Power DPS', 'power')).toBe(Number.NEGATIVE_INFINITY);
+    expect(scoreRaidBuildVariant('PvP Power', 'power')).toBe(Number.NEGATIVE_INFINITY);
+  });
+
+  it('prefers support pages when the log looks like a support role', () => {
+    expect(
+      scoreRaidBuildVariant('Quickness Support Power DPS', { focus: 'power', preferSupport: true }),
+    ).toBeGreaterThan(scoreRaidBuildVariant('Power DPS', { focus: 'power', preferSupport: true }));
+  });
+
+  it('infers condition focus from indirect damage share', () => {
+    const player = {
+      damageBySkill: new Map([
+        [1, { skillId: 1, name: 'Direct', damage: 1000, hits: 10, connectedHits: 10, indirect: false }],
+        [2, { skillId: 2, name: 'Bleed', damage: 900, hits: 40, connectedHits: 40, indirect: true }],
+      ]),
+    } as unknown as NormalizedPlayer;
+
+    expect(inferDamageFocus(player)).toBe('condition');
   });
 });

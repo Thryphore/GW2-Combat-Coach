@@ -1,12 +1,27 @@
 import type {
   EIBuffDesc,
+  EIConsumable,
   EIDamageModDesc,
   EILog,
   EIPlayer,
+  EIPlayerBuffsGeneration,
   EISkillDesc,
 } from '../api/eiTypes.ts';
 import type { LogSource } from '../api/logSource.ts';
 import { StackTimeline, type Interval } from './timeline.ts';
+
+/** Food = Nourishment, utility = Enhancement (oils, writs, stones). */
+export type ConsumableKind = 'food' | 'utility' | 'other';
+
+export interface NormalizedConsumable {
+  id: number;
+  name: string;
+  kind: ConsumableKind;
+  icon?: string;
+  /** ms from fight start; negative means the buff was already active. */
+  time: number;
+  durationMs: number;
+}
 
 export interface NormalizedCast {
   /** Position in the player's cast sequence. */
@@ -32,6 +47,21 @@ export interface NormalizedWeaponSet {
   end: number;
 }
 
+/**
+ * Where a tracked damage bonus comes from. Prefer a specific label over the
+ * generic "damage modifier" wording in the UI.
+ */
+export type DamageModifierSource =
+  | 'food'
+  | 'utility'
+  | 'relic'
+  | 'sigil'
+  | 'rune'
+  | 'trait'
+  | 'skill'
+  | 'item'
+  | 'other';
+
 export interface NormalizedDamageModifier {
   id: number;
   name: string;
@@ -40,6 +70,7 @@ export interface NormalizedDamageModifier {
   damageGain: number;
   /** Share of eligible hits that benefited, 0-1. */
   hitRatio: number;
+  source: DamageModifierSource;
 }
 
 export interface NormalizedSkillDamage {
@@ -66,6 +97,13 @@ export interface NormalizedPlayer {
   weaponSets: NormalizedWeaponSet[];
   damageModifiers: NormalizedDamageModifier[];
   damageBySkill: Map<number, NormalizedSkillDamage>;
+  /**
+   * Outgoing squad/group buff generation keyed by buff id.
+   * Values are Elite Insights generation percentages for the full fight.
+   */
+  buffGeneration: Map<number, number>;
+  /** Food / utility / other consumables active at fight start. */
+  consumables: NormalizedConsumable[];
   deaths: number;
   downs: number;
   dodges: number;
@@ -114,6 +152,133 @@ function parseMap<T>(source: Record<string, T> | undefined): Map<number, T> {
   return map;
 }
 
+/** Rewrites Wingman/EI cache icon paths to render.guildwars2.com URLs. */
+export function resolveEiIcon(icon: string | undefined): string | undefined {
+  if (!icon) return undefined;
+  if (icon.startsWith('https://') || icon.startsWith('http://')) return icon;
+  const cached = icon.match(/^\/cache\/https_render\.guildwars2\.com_file_([A-Fa-f0-9]+)_(\d+)\.png$/i);
+  if (cached) return `https://render.guildwars2.com/file/${cached[1]}/${cached[2]}.png`;
+  return undefined;
+}
+
+export function consumableKindFromBuff(
+  desc: EIBuffDesc | undefined,
+  uniqueSlot?: number,
+): ConsumableKind {
+  const classification = desc?.classification;
+  if (classification === 'Nourishment' || uniqueSlot === 1) return 'food';
+  if (classification === 'Enhancement' || uniqueSlot === 2) return 'utility';
+  return 'other';
+}
+
+const SKIPPED_CONSUMABLE_NAMES = new Set(['malnourished', 'diminished']);
+
+/**
+ * Picks the food, utility, and other consumable that were active when the fight
+ * started (one per kind). Mid-fight refreshes are ignored for build display.
+ */
+export function normalizeConsumables(
+  consumables: EIConsumable[] | undefined,
+  buffs: Map<number, EIBuffDesc>,
+): NormalizedConsumable[] {
+  const activeAtStart: NormalizedConsumable[] = [];
+  for (const entry of consumables ?? []) {
+    const desc = buffs.get(entry.id);
+    const name = desc?.name ?? `Consumable ${entry.id}`;
+    if (SKIPPED_CONSUMABLE_NAMES.has(name.toLowerCase())) continue;
+    const normalized: NormalizedConsumable = {
+      id: entry.id,
+      name,
+      kind: consumableKindFromBuff(desc, entry.uniqueSlot),
+      icon: resolveEiIcon(desc?.icon),
+      time: entry.time,
+      durationMs: entry.duration,
+    };
+    if (normalized.time <= 0 && normalized.time + normalized.durationMs > 0) {
+      activeAtStart.push(normalized);
+    }
+  }
+  activeAtStart.sort((a, b) => a.time - b.time);
+
+  const byKind = new Map<ConsumableKind, NormalizedConsumable>();
+  for (const entry of activeAtStart) {
+    if (!byKind.has(entry.kind)) byKind.set(entry.kind, entry);
+  }
+
+  const ordered: NormalizedConsumable[] = [];
+  for (const kind of ['food', 'utility', 'other'] as const) {
+    const entry = byKind.get(kind);
+    if (entry) ordered.push(entry);
+  }
+  return ordered;
+}
+
+function consumableKindByName(
+  buffs: Map<number, EIBuffDesc>,
+  name: string,
+): Exclude<ConsumableKind, 'other'> | undefined {
+  const wanted = name.toLowerCase();
+  for (const desc of buffs.values()) {
+    if (desc.name?.toLowerCase() !== wanted) continue;
+    const kind = consumableKindFromBuff(desc);
+    if (kind === 'food' || kind === 'utility') return kind;
+  }
+  return undefined;
+}
+
+const DAMAGE_MODIFIER_SOURCE_LABEL: Record<DamageModifierSource, string> = {
+  food: 'Food',
+  utility: 'Utility',
+  relic: 'Relic',
+  sigil: 'Sigil',
+  rune: 'Rune',
+  trait: 'Trait',
+  skill: 'Skill',
+  item: 'Item',
+  other: 'Bonus',
+};
+
+export function damageModifierSourceLabel(source: DamageModifierSource): string {
+  return DAMAGE_MODIFIER_SOURCE_LABEL[source];
+}
+
+/** "Utility · Writ of Masterful Malice" */
+export function formatDamageModifierName(mod: {
+  name: string;
+  source: DamageModifierSource;
+}): string {
+  return `${damageModifierSourceLabel(mod.source)} · ${mod.name}`;
+}
+
+/**
+ * Classifies a damage bonus so the UI can say food / relic / trait / etc.
+ * instead of the generic "damage modifier".
+ */
+export function classifyDamageModifierSource(
+  name: string,
+  options: {
+    buffs?: Map<number, EIBuffDesc>;
+    personalIds?: Set<number>;
+    modId?: number;
+    skillBased?: boolean;
+  } = {},
+): DamageModifierSource {
+  const consumable = options.buffs ? consumableKindByName(options.buffs, name) : undefined;
+  if (consumable) return consumable;
+
+  if (/^Relic of /i.test(name) || name === 'Bloodstone Fervor') return 'relic';
+  if (/sigil/i.test(name)) return 'sigil';
+  if (/rune/i.test(name)) return 'rune';
+  // EI names food-sourced strike bonuses this way (e.g. Seaweed Salad → Moving Bonus).
+  if (name === 'Moving Bonus' || /^Food:/i.test(name) || /^Ascended Food:/i.test(name)) {
+    return 'food';
+  }
+
+  if (options.modId !== undefined && options.personalIds?.has(options.modId)) return 'trait';
+  if (options.skillBased) return 'skill';
+  return 'item';
+}
+
 function normalizeWeaponSets(player: EIPlayer, fightEnd: number): NormalizedWeaponSet[] {
   const sets = player.weaponSets
     ?.map((set) => ({
@@ -134,7 +299,12 @@ function normalizeWeaponSets(player: EIPlayer, fightEnd: number): NormalizedWeap
   return land.map((weapons) => ({ weapons, start: 0, end: fightEnd }));
 }
 
-function normalizePlayer(player: EIPlayer, log: EILog, skills: Map<number, EISkillDesc>): NormalizedPlayer {
+function normalizePlayer(
+  player: EIPlayer,
+  log: EILog,
+  skills: Map<number, EISkillDesc>,
+  buffDescs: Map<number, EIBuffDesc>,
+): NormalizedPlayer {
   const fightEnd = log.durationMS ?? 0;
 
   const casts: NormalizedCast[] = [];
@@ -168,18 +338,27 @@ function normalizePlayer(player: EIPlayer, log: EILog, skills: Map<number, EISki
 
   const damageModifiers: NormalizedDamageModifier[] = [];
   const damageModMap = parseMap(log.damageModMap);
+  const personalModIds = new Set(log.personalDamageMods?.[player.profession ?? ''] ?? []);
   for (const mod of player.damageModifiers ?? []) {
     const entry = mod.damageModifiers?.[0];
     if (!entry) continue;
     const hitCount = entry.hitCount ?? 0;
     const totalHitCount = entry.totalHitCount ?? 0;
+    const desc = damageModMap.get(mod.id);
+    const name = desc?.name ?? `Modifier ${mod.id}`;
     damageModifiers.push({
       id: mod.id,
-      name: damageModMap.get(mod.id)?.name ?? `Modifier ${mod.id}`,
+      name,
       hitCount,
       totalHitCount,
       damageGain: entry.damageGain ?? 0,
       hitRatio: totalHitCount > 0 ? hitCount / totalHitCount : 0,
+      source: classifyDamageModifierSource(name, {
+        buffs: buffDescs,
+        personalIds: personalModIds,
+        modId: mod.id,
+        skillBased: desc?.skillBased === true,
+      }),
     });
   }
 
@@ -207,6 +386,7 @@ function normalizePlayer(player: EIPlayer, log: EILog, skills: Map<number, EISki
 
   const stats = player.statsAll?.[0];
   const defenses = player.defenses?.[0];
+  const buffGeneration = mergeBuffGeneration(player.squadBuffs, player.groupBuffs);
 
   return {
     name: player.name ?? 'Unknown',
@@ -223,6 +403,8 @@ function normalizePlayer(player: EIPlayer, log: EILog, skills: Map<number, EISki
     weaponSets: normalizeWeaponSets(player, fightEnd),
     damageModifiers,
     damageBySkill,
+    buffGeneration,
+    consumables: normalizeConsumables(player.consumables, buffDescs),
     deaths: defenses?.deadCount ?? 0,
     downs: defenses?.downCount ?? 0,
     dodges: defenses?.dodgeCount ?? 0,
@@ -233,9 +415,24 @@ function normalizePlayer(player: EIPlayer, log: EILog, skills: Map<number, EISki
   };
 }
 
+/** Keeps the stronger of squad vs group generation for each buff. */
+function mergeBuffGeneration(...sources: (EIPlayerBuffsGeneration[] | undefined)[]): Map<number, number> {
+  const merged = new Map<number, number>();
+  for (const list of sources) {
+    for (const entry of list ?? []) {
+      const generation = entry.buffData?.[0]?.generation ?? 0;
+      if (generation <= 0) continue;
+      const existing = merged.get(entry.id) ?? 0;
+      if (generation > existing) merged.set(entry.id, generation);
+    }
+  }
+  return merged;
+}
+
 export function normalizeLog(raw: EILog, source: LogSource): NormalizedLog {
   const durationMs = raw.durationMS ?? 0;
   const skills = parseMap(raw.skillMap);
+  const buffs = parseMap(raw.buffMap);
 
   const phases: NormalizedPhase[] = (raw.phases ?? []).map((phase, index) => ({
     start: phase.start,
@@ -252,7 +449,7 @@ export function normalizeLog(raw: EILog, source: LogSource): NormalizedLog {
 
   const players = (raw.players ?? [])
     .filter((player) => !player.friendlyNPC)
-    .map((player) => normalizePlayer(player, raw, skills));
+    .map((player) => normalizePlayer(player, raw, skills, buffs));
 
   return {
     source,
@@ -270,7 +467,7 @@ export function normalizeLog(raw: EILog, source: LogSource): NormalizedLog {
     phases,
     players,
     skills,
-    buffs: parseMap(raw.buffMap),
+    buffs,
     damageMods: parseMap(raw.damageModMap),
     personalBuffs: raw.personalBuffs ?? {},
     targetNames: (raw.targets ?? []).map((target) => target.name ?? 'Unknown').filter(Boolean),
@@ -290,6 +487,31 @@ export function findBuffId(log: NormalizedLog, name: string): number | undefined
 export function findBuffIdMatching(log: NormalizedLog, pattern: RegExp): number | undefined {
   for (const [id, desc] of log.buffs) {
     if (desc.name && pattern.test(desc.name)) return id;
+  }
+  return undefined;
+}
+
+/**
+ * Virtuoso's blade resource. Elite Insights labels it "Virtuoso Blade" (often a
+ * synthetic id like -25). Older fixtures / docs sometimes call it "Blades".
+ * Do not confuse with "Deadly Blades", which is a trait proc, not the stack.
+ */
+export function findBladeBuffId(log: NormalizedLog): number | undefined {
+  const byName =
+    findBuffId(log, 'Virtuoso Blade') ??
+    findBuffId(log, 'Blades') ??
+    findBuffIdMatching(log, /^virtuoso blade$/i);
+  if (byName !== undefined) return byName;
+
+  for (const id of log.personalBuffs.Virtuoso ?? []) {
+    const name = log.buffs.get(id)?.name;
+    if (name && /^(virtuoso blade|blades)$/i.test(name)) return id;
+  }
+
+  for (const [id, desc] of log.buffs) {
+    if (!desc.stacking || !desc.name) continue;
+    if (/deadly blades/i.test(desc.name)) continue;
+    if (/\bblade\b/i.test(desc.name) && /virtuoso/i.test(desc.name)) return id;
   }
   return undefined;
 }

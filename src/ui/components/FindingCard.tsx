@@ -1,8 +1,17 @@
+import type { SkillIndex } from '../../api/gw2.ts';
 import { timestamp } from '../../analysis/format.ts';
 import type { Finding, Metric } from '../../analysis/types.ts';
+import type { InferredBuild, ReferenceBuild } from '../../model/build.ts';
+import { SkillLinkedText } from './SkillLinkedText.tsx';
 import { SEVERITY_STYLES } from './severity.ts';
 
-function MetricBar({ metric }: { metric: Metric }) {
+interface LinkContext {
+  skills?: SkillIndex;
+  build?: InferredBuild;
+  reference?: ReferenceBuild;
+}
+
+function MetricBar({ metric, link }: { metric: Metric; link: LinkContext }) {
   const higherIsBetter = metric.higherIsBetter ?? true;
   const target = metric.target;
   const fill =
@@ -13,7 +22,9 @@ function MetricBar({ metric }: { metric: Metric }) {
   return (
     <div className="min-w-36 flex-1">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs text-ink-400">{metric.label}</span>
+        <span className="text-xs text-ink-400">
+          <SkillLinkedText text={metric.label} {...link} />
+        </span>
         <span className="font-mono text-sm text-ink-200">{metric.display}</span>
       </div>
       {fill !== undefined && (
@@ -28,27 +39,61 @@ function MetricBar({ metric }: { metric: Metric }) {
   );
 }
 
-export function FindingCard({ finding }: { finding: Finding }) {
+export function FindingCard({
+  finding,
+  skills,
+  build,
+  reference,
+}: {
+  finding: Finding;
+} & LinkContext) {
   const style = SEVERITY_STYLES[finding.severity];
   const hasDetails = !!(finding.detail || finding.fix || finding.evidence?.length || finding.caveat);
+  const link: LinkContext = { skills, build, reference };
 
   return (
     <article className="overflow-hidden rounded-xl border border-ink-700 bg-ink-850/70">
       <div className={`h-0.5 w-full ${style.bar}`} />
       <div className="p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h3 className="text-base font-semibold text-white">{finding.title}</h3>
+          <h3 className="text-base font-semibold text-white">
+            <SkillLinkedText text={finding.title} {...link} />
+          </h3>
           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${style.chip}`}>
             {style.label}
           </span>
         </div>
 
-        <p className="mt-2 text-sm leading-relaxed text-ink-200">{finding.summary}</p>
+        <p className="mt-2 text-sm leading-relaxed text-ink-200">
+          <SkillLinkedText text={finding.summary} {...link} />
+        </p>
 
         {finding.metrics && finding.metrics.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-4">
             {finding.metrics.map((metric) => (
-              <MetricBar key={metric.label} metric={metric} />
+              <MetricBar key={metric.label} metric={metric} link={link} />
+            ))}
+          </div>
+        )}
+
+        {finding.insights && finding.insights.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {finding.insights.map((insight) => (
+              <div key={insight.title} className="rounded-lg bg-ink-800/80 p-3 ring-1 ring-inset ring-ink-700">
+                <h4 className="text-xs font-semibold tracking-wide text-ink-400 uppercase">
+                  <SkillLinkedText text={insight.title} {...link} />
+                </h4>
+                <p className="mt-1 text-sm leading-relaxed text-ink-200">
+                  <SkillLinkedText text={insight.summary} {...link} />
+                </p>
+                {insight.metrics && insight.metrics.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-4">
+                    {insight.metrics.map((metric) => (
+                      <MetricBar key={metric.label} metric={metric} link={link} />
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}
@@ -61,12 +106,18 @@ export function FindingCard({ finding }: { finding: Finding }) {
             </summary>
 
             <div className="mt-3 space-y-3 border-l-2 border-ink-700 pl-4">
-              {finding.detail && <p className="text-sm leading-relaxed text-ink-400">{finding.detail}</p>}
+              {finding.detail && (
+                <p className="text-sm leading-relaxed text-ink-400">
+                  <SkillLinkedText text={finding.detail} {...link} />
+                </p>
+              )}
 
               {finding.fix && (
                 <div>
                   <h4 className="text-xs font-semibold tracking-wide text-ink-400 uppercase">What to do</h4>
-                  <p className="mt-1 text-sm leading-relaxed text-ink-200">{finding.fix}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-ink-200">
+                    <SkillLinkedText text={finding.fix} {...link} />
+                  </p>
                 </div>
               )}
 
@@ -80,8 +131,13 @@ export function FindingCard({ finding }: { finding: Finding }) {
                           <span className="shrink-0 font-mono text-xs text-ink-400">{timestamp(item.time)}</span>
                         )}
                         <span className="text-ink-200">
-                          {item.label}
-                          {item.detail && <span className="text-ink-400"> — {item.detail}</span>}
+                          <SkillLinkedText text={item.label} {...link} />
+                          {item.detail && (
+                            <span className="text-ink-400">
+                              {' '}
+                              — <SkillLinkedText text={item.detail} {...link} />
+                            </span>
+                          )}
                         </span>
                       </li>
                     ))}
@@ -92,7 +148,7 @@ export function FindingCard({ finding }: { finding: Finding }) {
               {finding.caveat && (
                 <p className="rounded-lg bg-ink-800 p-3 text-xs leading-relaxed text-ink-400">
                   <span className="font-semibold text-ink-200">Caveat: </span>
-                  {finding.caveat}
+                  <SkillLinkedText text={finding.caveat} {...link} />
                 </p>
               )}
             </div>

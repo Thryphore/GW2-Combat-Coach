@@ -1,8 +1,82 @@
+import type { SkillIndex } from '../../api/gw2.ts';
+import type { NormalizedPlayer } from '../../model/normalize.ts';
 import { count, duration, percent, timestamp } from '../format.ts';
 import type { Check, Evidence, Finding } from '../types.ts';
 
 /** Auto chains lapse on their own after a few idle seconds; that is not a mistake. */
 const CHAIN_TIMEOUT_MS = 4000;
+
+export interface AutoChainMeasurement {
+  attempts: number;
+  completed: number;
+  completionRate: number;
+  drops: Evidence[];
+  abortedCount: number;
+  abortedMs: number;
+}
+
+/** Measures auto-attack chain completion for a player. */
+export function measureAutoAttackChains(
+  player: NormalizedPlayer,
+  skills: SkillIndex,
+): AutoChainMeasurement {
+  const autos = player.casts.filter((cast) => cast.isAutoAttack && skills.chainPosition(cast.skillId));
+  if (autos.length < 4) {
+    return { attempts: 0, completed: 0, completionRate: 1, drops: [], abortedCount: 0, abortedMs: 0 };
+  }
+
+  const swapTimes = player.casts.filter((cast) => cast.isWeaponSwap).map((cast) => cast.time);
+  const swappedBetween = (from: number, to: number) => swapTimes.some((t) => t >= from && t <= to);
+
+  let started = 0;
+  let completed = 0;
+  const drops: Evidence[] = [];
+
+  for (let i = 0; i < autos.length; i += 1) {
+    const cast = autos[i];
+    const position = skills.chainPosition(cast.skillId);
+    if (!position) continue;
+
+    if (position.step === 1) started += 1;
+    if (position.step === position.length) {
+      completed += 1;
+      continue;
+    }
+
+    const next = autos[i + 1];
+    if (!next) break;
+    const nextPosition = skills.chainPosition(next.skillId);
+    if (!nextPosition) continue;
+
+    if (nextPosition.rootId !== position.rootId) continue;
+    if (next.time - cast.endTime > CHAIN_TIMEOUT_MS) continue;
+    if (swappedBetween(cast.time, next.time)) continue;
+    if (nextPosition.step === position.step + 1) continue;
+
+    if (nextPosition.step === 1) {
+      const finalStep = skills.skill(position.nextId ?? 0)?.name;
+      drops.push({
+        time: cast.time,
+        label: `${cast.name} (step ${position.step} of ${position.length}) restarted the chain`,
+        detail: finalStep ? `${finalStep} never landed` : undefined,
+      });
+    }
+  }
+
+  const aborted = autos.filter((cast) => cast.timeGained < 0);
+  const abortedMs = aborted.reduce((total, cast) => total + Math.abs(cast.timeGained), 0);
+  const attempts = Math.max(started, completed);
+  const completionRate = attempts > 0 ? Math.min(1, completed / attempts) : 1;
+
+  return {
+    attempts,
+    completed,
+    completionRate,
+    drops,
+    abortedCount: aborted.length,
+    abortedMs,
+  };
+}
 
 export const autoAttackChainCheck: Check = {
   id: 'auto-attack-chain',
@@ -22,53 +96,11 @@ export const autoAttackChainCheck: Check = {
   run: ({ player, skills }) => {
     if (!skills) return [];
 
-    const autos = player.casts.filter((cast) => cast.isAutoAttack && skills.chainPosition(cast.skillId));
-    if (autos.length < 4) return [];
-
-    const swapTimes = player.casts.filter((cast) => cast.isWeaponSwap).map((cast) => cast.time);
-    const swappedBetween = (from: number, to: number) => swapTimes.some((t) => t >= from && t <= to);
-
-    let started = 0;
-    let completed = 0;
-    const drops: Evidence[] = [];
-
-    for (let i = 0; i < autos.length; i += 1) {
-      const cast = autos[i];
-      const position = skills.chainPosition(cast.skillId);
-      if (!position) continue;
-
-      if (position.step === 1) started += 1;
-      if (position.step === position.length) {
-        completed += 1;
-        continue;
-      }
-
-      const next = autos[i + 1];
-      if (!next) break;
-      const nextPosition = skills.chainPosition(next.skillId);
-      if (!nextPosition) continue;
-
-      if (nextPosition.rootId !== position.rootId) continue;
-      if (next.time - cast.endTime > CHAIN_TIMEOUT_MS) continue;
-      if (swappedBetween(cast.time, next.time)) continue;
-      if (nextPosition.step === position.step + 1) continue;
-
-      if (nextPosition.step === 1) {
-        const finalStep = skills.skill(position.nextId ?? 0)?.name;
-        drops.push({
-          time: cast.time,
-          label: `${cast.name} (step ${position.step} of ${position.length}) restarted the chain`,
-          detail: finalStep ? `${finalStep} never landed` : undefined,
-        });
-      }
-    }
-
-    const aborted = autos.filter((cast) => cast.timeGained < 0);
-    const abortedMs = aborted.reduce((total, cast) => total + Math.abs(cast.timeGained), 0);
+    const measured = measureAutoAttackChains(player, skills);
+    if (measured.attempts === 0 && measured.abortedCount === 0) return [];
 
     const findings: Finding[] = [];
-    const attempts = Math.max(started, completed);
-    const completionRate = attempts > 0 ? Math.min(1, completed / attempts) : 1;
+    const { attempts, completed, completionRate, drops, abortedCount, abortedMs } = measured;
 
     if (drops.length > 0) {
       const dropRate = attempts > 0 ? drops.length / attempts : 0;
@@ -109,12 +141,15 @@ export const autoAttackChainCheck: Check = {
       });
     }
 
-    if (aborted.length > 2) {
+    if (abortedCount > 2) {
+      const aborted = player.casts.filter(
+        (cast) => cast.isAutoAttack && skills.chainPosition(cast.skillId) && cast.timeGained < 0,
+      );
       findings.push({
         id: 'auto-attack-chain/aborted',
         checkId: 'auto-attack-chain',
         severity: abortedMs > 2000 ? 'warning' : 'info',
-        title: `${count(aborted.length, 'auto-attack')} cancelled mid-swing`,
+        title: `${count(abortedCount, 'auto-attack')} cancelled mid-swing`,
         summary: `${duration(abortedMs)} of auto-attack animation was started and then thrown away without the hit landing.`,
         fix: 'These are usually caused by moving or dodging right after pressing 1. Queue movement between attacks rather than during them.',
         metrics: [

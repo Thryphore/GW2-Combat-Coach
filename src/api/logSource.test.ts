@@ -26,10 +26,24 @@ describe('parseLogInput', () => {
     expect(parseLogInput('iIoY-20220529-225311_sloth').id).toBe('iIoY-20220529-225311_sloth');
   });
 
-  it('explains why Wingman links are not supported', () => {
-    expect(() => parseLogInput('https://gw2wingman.nevermindcreations.de/log/20230102-202238_dhuum')).toThrow(
-      /different report format/,
+  it('accepts a Wingman log permalink', () => {
+    const source = parseLogInput('https://gw2wingman.nevermindcreations.de/log/20230102-202238_dhuum');
+    expect(source.kind).toBe('wingman');
+    expect(source.id).toBe('20230102-202238_dhuum');
+    expect(source.permalink).toBe('https://gw2wingman.nevermindcreations.de/log/20230102-202238_dhuum');
+    expect(source.jsonUrl).toBe(
+      'https://gw2wingman.nevermindcreations.de/api/getJson/20230102-202238_dhuum',
     );
+    expect(source.serviceName).toBe('GW2 Wingman');
+  });
+
+  it('accepts a Wingman getJson URL and keeps kill suffixes', () => {
+    const source = parseLogInput(
+      'https://gw2wingman.nevermindcreations.de/api/getJson/20230102-202238_dhuum_kill',
+    );
+    expect(source.kind).toBe('wingman');
+    expect(source.id).toBe('20230102-202238_dhuum_kill');
+    expect(source.jsonUrl).toContain('/api/getJson/20230102-202238_dhuum_kill');
   });
 
   it('rejects unrelated input', () => {

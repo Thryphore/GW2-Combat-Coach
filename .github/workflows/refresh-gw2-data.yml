@@ -12,11 +12,11 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
-      - run: node scripts/fetch-gw2-data.mjs
+      - run: npm run fetch-gw2-data
       - name: Commit refreshed snapshot
         run: |
           if git diff --quiet -- src/data; then

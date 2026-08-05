@@ -45,26 +45,97 @@ describe('result components', () => {
 
   it('renders every finding the engine produced', () => {
     for (const found of result.findings) {
-      const html = renderToStaticMarkup(createElement(FindingCard, { finding: found }));
-      expect(html).toContain(found.title.replace(/&/g, '&amp;'));
+      const html = renderToStaticMarkup(
+        createElement(FindingCard, { finding: found, skills, build }),
+      );
+      // Skill chips may inject a keybind badge mid-title; strip those before comparing.
+      const plain = html
+        .replace(/<span[^>]*font-mono[^>]*>[\s\S]*?<\/span>/g, '')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&amp;/g, '&');
+      expect(plain).toContain(found.title);
     }
   });
 
-  it('renders the timeline with a row per boon', () => {
-    const html = renderToStaticMarkup(createElement(Timeline, { log, player }));
-    expect(html).toContain('Alacrity');
+  it('marks skill names in finding prose as hover targets', () => {
+    const html = renderToStaticMarkup(
+      createElement(FindingCard, {
+        finding: {
+          id: 'rotation-test',
+          checkId: 'rotation-compare',
+          severity: 'warning',
+          title: 'Skill priority differs from the reference',
+          summary:
+            'The largest difference is Flying Cutter: 77.4 casts per minute against 83.9.',
+        },
+        skills,
+        build,
+      }),
+    );
+    expect(html).toContain('Flying Cutter');
+    expect(html).toContain('rounded-lg bg-ink-800');
+    // Weapon_1 → keybind 1
+    expect(html).toContain('>1<');
+  });
+
+  it('renders the timeline with personal boons for a DPS log', () => {
+    const html = renderToStaticMarkup(createElement(Timeline, { log, player, build, skills }));
+    // Support boons are only listed as rows for support roles; the footnote may still mention them.
+    expect(html).not.toMatch(/>Alacrity</);
+    expect(html).toContain('Blades');
+    expect(html).toContain('Fury');
     expect(html).toContain('Casts');
   });
 
-  it('renders the observed build next to a reference build', () => {
+  it('renders the observed build next to a reference build and alternatives', () => {
     const reference = referenceBuildFromChatCode(
       '[&DQcBHRgaQiojDyMP3RrdGmkBaQFlAYUB5RrtEgAAAAAAAAAAAAAAAAAAAAADLwBaAAkBAA==]',
       skills,
       { name: 'Power Virtuoso' },
     );
-    const html = renderToStaticMarkup(createElement(BuildPanel, { build, reference }));
+    const html = renderToStaticMarkup(
+      createElement(BuildPanel, {
+        build,
+        reference,
+        skills,
+        consumables: [
+          {
+            id: 57409,
+            name: 'Cilantro and Cured Meat Flatbread',
+            kind: 'food',
+            time: -5,
+            durationMs: 1_800_000,
+          },
+          {
+            id: 33836,
+            name: 'Writ of Masterful Malice',
+            kind: 'utility',
+            time: -4,
+            durationMs: 1_800_000,
+          },
+        ],
+        alternatives: [
+          {
+            page: 'Build:Virtuoso - Condi DPS',
+            eliteSpec: 'Virtuoso',
+            variant: 'Condi DPS',
+            score: 120,
+          },
+        ],
+      }),
+    );
     expect(html).toContain('Signet of the Ether');
     expect(html).toContain('Power Virtuoso');
     expect(html).toContain('Infinite Forge');
+    expect(html).toContain('Auto-chosen MetaBattle raid build');
+    expect(html).toContain('Condi DPS');
+    expect(html).toContain('Consumables');
+    expect(html).toContain('Food');
+    expect(html).toContain('Utility');
+    expect(html).toContain('Writ of Masterful Malice');
+    expect(html).toContain('Cilantro and Cured Meat Flatbread');
+    // Default keybinds: heal=6, utilities=7–9, elite=0
+    expect(html).toContain('>6<');
+    expect(html).toContain('>0<');
   });
 });

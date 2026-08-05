@@ -1,4 +1,5 @@
 import { findBuffId } from '../../model/normalize.ts';
+import { boonsForRole, isSupportRole } from '../boonRole.ts';
 import { count, duration, percent, timestamp } from '../format.ts';
 import type { Check, Finding, Severity } from '../types.ts';
 
@@ -12,33 +13,33 @@ interface BoonConfig {
   note: string;
 }
 
-const BOONS: BoonConfig[] = [
-  {
+const BOON_CONFIG: Record<string, BoonConfig> = {
+  Alacrity: {
     name: 'Alacrity',
     warnBelow: 0.9,
     criticalBelow: 0.7,
-    note: 'Alacrity makes your skills recharge 25% faster, so every second without it is a slower rotation.',
+    note: 'Alacrity makes skills recharge 25% faster, so every second without it slows the whole subgroup.',
   },
-  {
+  Quickness: {
     name: 'Quickness',
     warnBelow: 0.9,
     criticalBelow: 0.7,
-    note: 'Quickness speeds up your cast animations by 50%, so gaps directly cost you casts.',
+    note: 'Quickness speeds up cast animations by 50%, so gaps directly cost casts.',
   },
-  {
+  Fury: {
     name: 'Fury',
     warnBelow: 0.85,
     criticalBelow: 0.6,
     note: 'Fury is 25% critical chance. Builds that assume permanent Fury lose a lot of damage without it.',
   },
-  {
+  Might: {
     name: 'Might',
     warnBelow: 0.95,
     criticalBelow: 0.8,
     stacks: { target: 25, warnBelow: 20 },
-    note: 'Might is your main scaling boon in group content.',
+    note: 'Might is the main damage-scaling boon in group content.',
   },
-];
+};
 
 const MIN_GAP_MS = 2000;
 
@@ -46,12 +47,17 @@ export const boonUptimeCheck: Check = {
   id: 'boon-uptime',
   name: 'Boon uptime',
   description:
-    'Measures how much of the fight you had each offensive boon, and pinpoints when they dropped.',
+    'For supports, measures the boons you should be upkeeping. For DPS, only checks personal offensive boons like Fury and Might.',
 
-  run: ({ log, player, window }) => {
+  run: ({ log, player, window, referenceBuild }) => {
     const findings: Finding[] = [];
+    const support = isSupportRole(log, player, referenceBuild);
+    const tracked = boonsForRole(log, player, referenceBuild);
 
-    for (const boon of BOONS) {
+    for (const name of tracked) {
+      const boon = BOON_CONFIG[name];
+      if (!boon) continue;
+
       const buffId = findBuffId(log, boon.name);
       if (buffId === undefined) continue;
       const timeline = player.buffs.get(buffId);
@@ -63,6 +69,8 @@ export const boonUptimeCheck: Check = {
 
       const gaps = timeline.gaps(MIN_GAP_MS, window);
       const lostMs = gaps.reduce((total, gap) => total + (gap.end - gap.start), 0);
+      const supportFix = `Keeping ${boon.name} up is part of this support role. Cover the subgroup, weave your boon skills on cooldown, and check whether gaps line up with mechanics that pull you out of range.`;
+      const dpsFix = `${boon.name} usually comes from your group, so the fix is often positional: stay within 360 units of whoever is providing it, and check whether the gaps line up with mechanics that spread the group out.`;
 
       if (boon.stacks) {
         const average = timeline.averageStacks(window);
@@ -72,7 +80,9 @@ export const boonUptimeCheck: Check = {
             checkId: 'boon-uptime',
             severity: 'good',
             title: `${boon.name} averaged ${average.toFixed(1)} stacks`,
-            summary: `Close enough to the ${boon.stacks.target} stack cap that there is nothing to fix here.`,
+            summary: support
+              ? `Your subgroup stayed close enough to the ${boon.stacks.target} stack cap.`
+              : `Close enough to the ${boon.stacks.target} stack cap that there is nothing to fix here.`,
             metrics: [
               {
                 label: `Average ${boon.name}`,
@@ -91,7 +101,7 @@ export const boonUptimeCheck: Check = {
           severity: average < boon.stacks.target * 0.6 ? 'warning' : 'info',
           title: `${boon.name} averaged only ${average.toFixed(1)} stacks`,
           summary: `${boon.note} You sat well below the ${boon.stacks.target} stack cap for most of the fight.`,
-          fix: 'Check whether your group has a Might source covering your subgroup, and stay inside their boon radius.',
+          fix: support ? supportFix : dpsFix,
           metrics: [
             {
               label: `Average ${boon.name}`,
@@ -114,7 +124,7 @@ export const boonUptimeCheck: Check = {
           checkId: 'boon-uptime',
           severity: 'good',
           title: `${boon.name} uptime ${percent(ratio)}`,
-          summary: 'Effectively permanent for this fight.',
+          summary: support ? 'Effectively permanent for the people you are covering.' : 'Effectively permanent for this fight.',
           metrics: [
             { label: `${boon.name} uptime`, display: percent(ratio), value: ratio * 100, target: 100 },
           ],
@@ -128,7 +138,7 @@ export const boonUptimeCheck: Check = {
         severity,
         title: `${boon.name} uptime was ${percent(ratio)}`,
         summary: `You went without ${boon.name} for ${duration(lostMs)} across ${count(gaps.length, 'gap')}. ${boon.note}`,
-        fix: `${boon.name} is provided by your group on this build, so the fix is usually positional: stay within 360 units of whoever is providing it, and check whether the gaps line up with mechanics that spread the group out.`,
+        fix: support ? supportFix : dpsFix,
         metrics: [
           {
             label: `${boon.name} uptime`,

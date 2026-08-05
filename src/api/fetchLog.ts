@@ -1,7 +1,9 @@
+import { cacheGet, cacheSet } from './cache.ts';
+import { adaptEiHtmlReport, isEiHtmlReport } from './eiHtmlAdapt.ts';
 import type { EILog } from './eiTypes.ts';
 import type { LogSource } from './logSource.ts';
 
-export type FetchStage = 'connecting' | 'downloading' | 'parsing';
+export type FetchStage = 'connecting' | 'downloading' | 'parsing' | 'cached';
 
 export interface FetchProgress {
   stage: FetchStage;
@@ -24,14 +26,42 @@ export class LogFetchError extends Error {
   }
 }
 
+/** Published logs are immutable; keep them around so reloads do not re-download. */
+const LOG_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Same-tab hits skip IndexedDB entirely. */
+const memoryCache = new Map<string, EILog>();
+
+function cacheKey(source: LogSource): string {
+  return `ei-log:${source.kind}:${source.id}`;
+}
+
 /**
  * Elite Insights JSON for a long encounter routinely runs to tens of megabytes,
- * so the body is streamed and progress is reported as it arrives.
+ * so the body is streamed and progress is reported as it arrives. Successful
+ * fetches are kept in memory and IndexedDB so a page reload can reuse them.
  */
 export async function fetchEliteInsightsJson(
   source: LogSource,
   { signal, onProgress }: FetchLogOptions = {},
 ): Promise<EILog> {
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+  const key = cacheKey(source);
+  const fromMemory = memoryCache.get(key);
+  if (fromMemory) {
+    onProgress?.({ stage: 'cached', bytesReceived: 0 });
+    return fromMemory;
+  }
+
+  const fromDisk = await cacheGet<EILog>(key);
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  if (fromDisk?.players?.length) {
+    memoryCache.set(key, fromDisk);
+    onProgress?.({ stage: 'cached', bytesReceived: 0 });
+    return fromDisk;
+  }
+
   onProgress?.({ stage: 'connecting', bytesReceived: 0 });
 
   let response: Response;
@@ -74,7 +104,11 @@ export async function fetchEliteInsightsJson(
     throw new LogFetchError(`${source.serviceName} rejected that log: ${maybeError}`, source);
   }
 
-  const log = parsed as EILog;
+  const log =
+    source.kind === 'wingman' || isEiHtmlReport(parsed)
+      ? adaptEiHtmlReport(parsed)
+      : (parsed as EILog);
+
   if (!log.players?.length) {
     throw new LogFetchError(
       'That report has no player data, so there is nothing to analyze. Detailed JSON is only available for logs parsed with Elite Insights.',
@@ -82,6 +116,8 @@ export async function fetchEliteInsightsJson(
     );
   }
 
+  memoryCache.set(key, log);
+  void cacheSet(key, log, LOG_TTL_MS);
   return log;
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supportedProfessions } from '../analysis/engine.ts';
 import type { Severity } from '../analysis/types.ts';
 import { BuildPanel } from './components/BuildPanel.tsx';
@@ -6,12 +6,7 @@ import { FindingCard } from './components/FindingCard.tsx';
 import { LogForm, type FormValues } from './components/LogForm.tsx';
 import { SummaryHeader } from './components/SummaryHeader.tsx';
 import { Timeline } from './components/Timeline.tsx';
-import {
-  runAnalysisRequest,
-  type AnalysisBundle,
-  type ReferenceBuildSelection,
-  type RunnerProgress,
-} from './analysisRunner.ts';
+import { runAnalysisRequest, type AnalysisBundle, type RunnerProgress } from './analysisRunner.ts';
 import { useHashRoute } from './useHashRoute.ts';
 
 type Status =
@@ -29,15 +24,12 @@ const SEVERITY_SECTIONS: { severity: Severity; heading: string; blurb: string }[
 
 export function App() {
   const [route, navigate] = useHashRoute();
-  const [referenceBuild, setReferenceBuild] = useState<ReferenceBuildSelection>({ kind: 'none' });
+  const [referenceBuildPage, setReferenceBuildPage] = useState<string | undefined>();
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
   const formDefaults = useRef<FormValues>({
     logInput: route.log ?? '',
     referenceLogInput: route.ref ?? '',
-    referenceBuild: { kind: 'none' },
   });
-
-  const referenceBuildKey = useMemo(() => JSON.stringify(referenceBuild), [referenceBuild]);
 
   useEffect(() => {
     if (!route.log) {
@@ -53,7 +45,7 @@ export function App() {
         logInput: route.log,
         referenceLogInput: route.ref,
         playerName: route.player,
-        referenceBuild: JSON.parse(referenceBuildKey) as ReferenceBuildSelection,
+        referenceBuildPage,
       },
       {
         signal: controller.signal,
@@ -70,11 +62,11 @@ export function App() {
       });
 
     return () => controller.abort();
-  }, [route.log, route.ref, route.player, referenceBuildKey]);
+  }, [route.log, route.ref, route.player, referenceBuildPage]);
 
   const onSubmit = (values: FormValues) => {
     formDefaults.current = values;
-    setReferenceBuild(values.referenceBuild);
+    setReferenceBuildPage(undefined);
     navigate({ log: values.logInput, ref: values.referenceLogInput || undefined });
   };
 
@@ -83,10 +75,11 @@ export function App() {
       <header className="mb-8">
         <h1 className="text-3xl font-semibold tracking-tight text-white">GW2 Combat Coach</h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-400">
-          Reads an arcdps log through dps.report and tells you what to fix: dropped auto-attack chains, cancelled
-          casts, unused combo fields, boon gaps, and held cooldowns. Deep coaching currently covers{' '}
+          Reads an arcdps log through dps.report or GW2 Wingman and tells you what to fix: dropped auto-attack
+          chains, cancelled casts, unused combo fields, boon gaps, and held cooldowns. Deep coaching currently covers{' '}
           {supportedProfessions().map((name) => name[0].toUpperCase() + name.slice(1)).join(', ')}; every other
-          specialization still gets the general checks.
+          specialization still gets the general checks, and a MetaBattle raid build is chosen automatically for
+          comparison.
         </p>
       </header>
 
@@ -114,7 +107,14 @@ export function App() {
       )}
 
       {status.kind === 'ready' && (
-        <Results bundle={status.bundle} onSelectPlayer={(player) => navigate({ ...route, player })} />
+        <Results
+          bundle={status.bundle}
+          onSelectPlayer={(player) => {
+            setReferenceBuildPage(undefined);
+            navigate({ ...route, player });
+          }}
+          onSelectReferenceBuild={setReferenceBuildPage}
+        />
       )}
 
       <footer className="mt-12 border-t border-ink-800 pt-6 text-xs leading-relaxed text-ink-400">
@@ -122,9 +122,18 @@ export function App() {
           Log data comes from{' '}
           <a href="https://dps.report" target="_blank" rel="noreferrer" className="text-brand-400 hover:underline">
             dps.report
+          </a>{' '}
+          or{' '}
+          <a
+            href="https://gw2wingman.nevermindcreations.de"
+            target="_blank"
+            rel="noreferrer"
+            className="text-brand-400 hover:underline"
+          >
+            GW2 Wingman
           </a>
-          , parsed by Elite Insights. Skill, trait and combo data comes from the official Guild Wars 2 API. Build data
-          comes from{' '}
+          , parsed by Elite Insights. Skill, trait and combo data comes from the official Guild Wars 2 API. Raid build
+          data comes from{' '}
           <a href="https://metabattle.com" target="_blank" rel="noreferrer" className="text-brand-400 hover:underline">
             MetaBattle
           </a>
@@ -149,11 +158,11 @@ function GettingStarted() {
         },
         {
           title: 'Upload it',
-          body: 'Drop the file on dps.report, or let an auto-upload tool do it. Copy the permalink it gives you back.',
+          body: 'Drop the file on dps.report or GW2 Wingman, or let an auto-upload tool do it. Copy the permalink it gives you back.',
         },
         {
           title: 'Paste it above',
-          body: 'The report is read straight from the host in your browser. Add a reference log or build to get comparisons too.',
+          body: 'The report is read straight from the host in your browser. A MetaBattle raid build is picked automatically; optionally add a reference log too.',
         },
       ].map((step, index) => (
         <div key={step.title} className="rounded-2xl border border-ink-700 bg-ink-850/70 p-5">
@@ -166,8 +175,16 @@ function GettingStarted() {
   );
 }
 
-function Results({ bundle, onSelectPlayer }: { bundle: AnalysisBundle; onSelectPlayer: (player: string) => void }) {
-  const { log, player, result, build, referenceBuild, warnings } = bundle;
+function Results({
+  bundle,
+  onSelectPlayer,
+  onSelectReferenceBuild,
+}: {
+  bundle: AnalysisBundle;
+  onSelectPlayer: (player: string) => void;
+  onSelectReferenceBuild: (page: string) => void;
+}) {
+  const { log, player, result, build, referenceBuild, referenceAlternatives, warnings, skills } = bundle;
 
   return (
     <div className="mt-6 space-y-6">
@@ -198,16 +215,35 @@ function Results({ bundle, onSelectPlayer }: { bundle: AnalysisBundle; onSelectP
             <p className="mt-0.5 text-xs text-ink-400">{section.blurb}</p>
             <div className="mt-3 space-y-3">
               {findings.map((finding) => (
-                <FindingCard key={finding.id} finding={finding} />
+                <FindingCard
+                  key={finding.id}
+                  finding={finding}
+                  skills={skills}
+                  build={build}
+                  reference={referenceBuild}
+                />
               ))}
             </div>
           </section>
         );
       })}
 
-      <Timeline log={log} player={player} />
+      <Timeline
+        log={log}
+        player={player}
+        referenceBuild={referenceBuild}
+        build={build}
+        skills={skills}
+      />
 
-      <BuildPanel build={build} reference={referenceBuild} />
+      <BuildPanel
+        build={build}
+        reference={referenceBuild}
+        consumables={player.consumables}
+        alternatives={referenceAlternatives}
+        skills={skills}
+        onSelectAlternative={onSelectReferenceBuild}
+      />
 
       <section className="rounded-2xl border border-ink-700 bg-ink-850/70 p-5">
         <h2 className="text-sm font-semibold tracking-wide text-ink-400 uppercase">What was checked</h2>

@@ -65,21 +65,27 @@ const ELITE_SPEC_TO_PROFESSION: Record<string, string> = {
   dragonhunter: 'Guardian',
   firebrand: 'Guardian',
   willbender: 'Guardian',
+  luminary: 'Guardian',
   berserker: 'Warrior',
   spellbreaker: 'Warrior',
   bladesworn: 'Warrior',
+  paragon: 'Warrior',
   scrapper: 'Engineer',
   holosmith: 'Engineer',
   mechanist: 'Engineer',
+  amalgam: 'Engineer',
   druid: 'Ranger',
   soulbeast: 'Ranger',
   untamed: 'Ranger',
+  galeshot: 'Ranger',
   daredevil: 'Thief',
   deadeye: 'Thief',
   specter: 'Thief',
+  antiquary: 'Thief',
   tempest: 'Elementalist',
   weaver: 'Elementalist',
   catalyst: 'Elementalist',
+  evoker: 'Elementalist',
   chronomancer: 'Mesmer',
   mirage: 'Mesmer',
   virtuoso: 'Mesmer',
@@ -87,14 +93,24 @@ const ELITE_SPEC_TO_PROFESSION: Record<string, string> = {
   reaper: 'Necromancer',
   scourge: 'Necromancer',
   harbinger: 'Necromancer',
+  ritualist: 'Necromancer',
   herald: 'Revenant',
   renegade: 'Revenant',
   vindicator: 'Revenant',
+  conduit: 'Revenant',
 };
 
 /** Snapshots shipped with the app. Add a profession here after generating its file. */
 const SNAPSHOT_LOADERS: Record<string, () => Promise<{ default: unknown }>> = {
+  guardian: () => import('../data/gw2/guardian.json'),
+  warrior: () => import('../data/gw2/warrior.json'),
+  engineer: () => import('../data/gw2/engineer.json'),
+  ranger: () => import('../data/gw2/ranger.json'),
+  thief: () => import('../data/gw2/thief.json'),
+  elementalist: () => import('../data/gw2/elementalist.json'),
   mesmer: () => import('../data/gw2/mesmer.json'),
+  necromancer: () => import('../data/gw2/necromancer.json'),
+  revenant: () => import('../data/gw2/revenant.json'),
 };
 
 export function baseProfessionOf(professionOrSpec: string): string {
@@ -144,19 +160,24 @@ export class SkillIndex {
     return this.snapshot.weapons;
   }
 
+  private skillRecord(id: number): SkillInfo | undefined {
+    return this.snapshot.skills[String(id)] ?? this.extra.get(id);
+  }
+
   /**
    * Chains are stored as `next_chain` links; walking from every root produces the
    * ordered steps used by the auto-attack chain check.
    */
   private buildChains(): void {
-    const skills = Object.values(this.snapshot.skills);
+    this.chains.clear();
+    const skills = [...Object.values(this.snapshot.skills), ...this.extra.values()];
     const roots = skills.filter((skill) => skill.nextChain && !skill.prevChain);
     for (const root of roots) {
       const sequence: SkillInfo[] = [root];
       let cursor: SkillInfo | undefined = root;
       const guard = new Set<number>([root.id]);
       while (cursor?.nextChain) {
-        const next: SkillInfo | undefined = this.snapshot.skills[String(cursor.nextChain)];
+        const next = this.skillRecord(cursor.nextChain);
         if (!next || guard.has(next.id)) break;
         guard.add(next.id);
         sequence.push(next);
@@ -182,6 +203,21 @@ export class SkillIndex {
     return this.byName.get(name.toLowerCase());
   }
 
+  /** Snapshot skills plus any live-fetched extras, for UI name linking. */
+  listSkills(): SkillInfo[] {
+    const seen = new Set<number>();
+    const out: SkillInfo[] = [];
+    for (const skill of Object.values(this.snapshot.skills)) {
+      seen.add(skill.id);
+      out.push(skill);
+    }
+    for (const skill of this.extra.values()) {
+      if (seen.has(skill.id)) continue;
+      out.push(skill);
+    }
+    return out;
+  }
+
   trait(id: number): TraitInfo | undefined {
     return this.snapshot.traits[String(id)];
   }
@@ -189,6 +225,10 @@ export class SkillIndex {
   traitByName(name: string): TraitInfo | undefined {
     const wanted = name.toLowerCase();
     return Object.values(this.snapshot.traits).find((trait) => trait.name.toLowerCase() === wanted);
+  }
+
+  listTraits(): TraitInfo[] {
+    return Object.values(this.snapshot.traits);
   }
 
   specialization(id: number): SpecializationInfo | undefined {
@@ -222,12 +262,16 @@ export class SkillIndex {
 
   /** Adds skills fetched live so later lookups hit memory. */
   addSkills(skills: SkillInfo[]): void {
+    let added = false;
     for (const skill of skills) {
-      if (this.snapshot.skills[String(skill.id)]) continue;
+      if (this.snapshot.skills[String(skill.id)] || this.extra.has(skill.id)) continue;
       this.extra.set(skill.id, skill);
       const key = skill.name.toLowerCase();
       if (!this.byName.has(key)) this.byName.set(key, skill);
+      added = true;
     }
+    // Live-fetched chain members need to participate in chainPosition().
+    if (added) this.buildChains();
   }
 }
 

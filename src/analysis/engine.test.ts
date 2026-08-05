@@ -33,7 +33,7 @@ function finding(id: string) {
 
 describe('normalizeLog', () => {
   it('flattens the rotation into a single ordered cast list', () => {
-    expect(player.casts).toHaveLength(23);
+    expect(player.casts).toHaveLength(28);
     for (let i = 1; i < player.casts.length; i += 1) {
       expect(player.casts[i].time).toBeGreaterThanOrEqual(player.casts[i - 1].time);
     }
@@ -86,12 +86,9 @@ describe('downtime check', () => {
 });
 
 describe('boon uptime check', () => {
-  it('flags the alacrity gap but not the permanent boons', () => {
-    const alacrity = finding('boon-uptime/alacrity');
-    expect(alacrity?.severity).toBe('warning');
-    expect(alacrity?.summary).toContain('without Alacrity for 10s');
-
-    expect(finding('boon-uptime/quickness')?.severity).toBe('good');
+  it('skips alacrity and quickness on a DPS log, and keeps personal offensive boons', () => {
+    expect(finding('boon-uptime/alacrity')).toBeUndefined();
+    expect(finding('boon-uptime/quickness')).toBeUndefined();
     expect(finding('boon-uptime/fury')?.severity).toBe('good');
     expect(finding('boon-uptime/might')?.severity).toBe('good');
   });
@@ -110,23 +107,29 @@ describe('cooldown check', () => {
   it('counts casts that the recharge would have allowed', () => {
     const held = finding('cooldowns/held');
     expect(held).toBeDefined();
-    expect(held?.evidence?.[0].label).toContain('Phantasmal Lancer');
+    expect(held?.evidence?.some((item) => item.label.includes('Phantasmal Lancer'))).toBe(true);
   });
 });
 
 describe('virtuoso blade economy', () => {
-  it('flags Bladesongs spent below five Blades', () => {
+  it('flags non-F4 F skills spent below five Blades and counts full-stack F casts', () => {
     const premature = finding('virtuoso/blades/premature');
     expect(premature).toBeDefined();
-    expect(premature?.summary).toContain('2 of 3');
+    expect(premature?.severity).toBe('critical');
+    // Two early Harmonies; F4 Distortion below five is excluded from the warning.
+    expect(premature?.summary).toContain('2 of 4');
+    expect(premature?.metrics?.[0].display).toBe('2 / 5');
     // Five blades minus three, plus five minus two.
     expect(premature?.metrics?.[1].value).toBe(5);
+    expect(premature?.evidence?.some((item) => item.label.includes('Distortion'))).toBe(false);
   });
 
-  it('reports time spent at the blade cap', () => {
-    const capped = finding('virtuoso/blades/capped');
-    expect(capped).toBeDefined();
-    expect(capped?.severity).toBe('warning');
+  it('flags blade-generating skills while capped and notes when F5 was ready', () => {
+    const wasted = finding('virtuoso/blades/wasted-gen');
+    expect(wasted).toBeDefined();
+    expect(wasted?.severity).toBe('info');
+    expect(wasted?.metrics?.[0].value).toBe(3);
+    expect(wasted?.insights?.[0].metrics?.[0].display).toBe('2 / 3');
   });
 });
 
@@ -161,6 +164,6 @@ describe('runAnalysis', () => {
   it('explains why inapplicable checks did not run', () => {
     const skipped = Object.fromEntries(result.checksSkipped.map(({ check, reason }) => [check.id, reason]));
     expect(skipped['reference-log']).toBe('No reference log was provided.');
-    expect(skipped['build-match']).toBe('No reference build was selected.');
+    expect(skipped['build-match']).toBe('No MetaBattle raid reference build was available.');
   });
 });

@@ -1,23 +1,19 @@
 import { fetchEliteInsightsJson, type FetchProgress } from '../api/fetchLog.ts';
 import { fetchSkillsLive, loadSkillIndex, type SkillIndex } from '../api/gw2.ts';
-import { fetchMetaBattleBuild, metaBattlePageFromInput } from '../api/metabattle.ts';
+import { autoSelectRaidReference, type RaidBuildCandidate } from '../api/metabattle.ts';
 import { parseLogInput } from '../api/logSource.ts';
+import { isSupportRole } from '../analysis/boonRole.ts';
 import { runAnalysis } from '../analysis/engine.ts';
 import type { AnalysisResult } from '../analysis/types.ts';
 import { inferBuild, type InferredBuild, type ReferenceBuild } from '../model/build.ts';
-import { referenceBuildFromChatCode } from '../model/chatCode.ts';
 import { normalizeLog, pickDefaultPlayer, type NormalizedLog, type NormalizedPlayer } from '../model/normalize.ts';
-
-export type ReferenceBuildSelection =
-  | { kind: 'none' }
-  | { kind: 'metabattle'; page: string }
-  | { kind: 'chat-code'; code: string };
 
 export interface AnalysisRequest {
   logInput: string;
   referenceLogInput?: string;
   playerName?: string;
-  referenceBuild: ReferenceBuildSelection;
+  /** When set, forces this MetaBattle raid page instead of the automatic pick. */
+  referenceBuildPage?: string;
 }
 
 export interface AnalysisBundle {
@@ -26,6 +22,8 @@ export interface AnalysisBundle {
   skills?: SkillIndex;
   build?: InferredBuild;
   referenceBuild?: ReferenceBuild;
+  /** Other MetaBattle raid builds for this elite spec, after the automatic pick. */
+  referenceAlternatives: RaidBuildCandidate[];
   referenceLog?: NormalizedLog;
   referencePlayer?: NormalizedPlayer;
   result: AnalysisResult;
@@ -44,6 +42,7 @@ export interface RunOptions {
 }
 
 function describeFetch(progress: FetchProgress, what: string): RunnerProgress {
+  if (progress.stage === 'cached') return { label: `Loading ${what}`, detail: 'From local cache' };
   if (progress.stage === 'parsing') return { label: `Parsing ${what}`, detail: 'Reading the encounter data' };
   const mb = progress.bytesReceived / (1024 * 1024);
   const total = progress.bytesTotal ? ` of ${(progress.bytesTotal / (1024 * 1024)).toFixed(1)} MB` : '';
@@ -59,19 +58,6 @@ async function enrichSkills(skills: SkillIndex, player: NormalizedPlayer): Promi
   if (missing.length === 0) return;
   const fetched = await fetchSkillsLive(missing);
   skills.addSkills(fetched);
-}
-
-async function loadReferenceBuild(
-  selection: ReferenceBuildSelection,
-  skills: SkillIndex | undefined,
-): Promise<ReferenceBuild | undefined> {
-  if (selection.kind === 'none') return undefined;
-  if (selection.kind === 'chat-code') {
-    return referenceBuildFromChatCode(selection.code, skills, { name: 'Pasted build template' });
-  }
-  const page = metaBattlePageFromInput(selection.page) ?? selection.page;
-  const parsed = await fetchMetaBattleBuild(page, skills);
-  return parsed.build;
 }
 
 export async function runAnalysisRequest(
@@ -107,15 +93,24 @@ export async function runAnalysisRequest(
   const build = skills ? inferBuild(log, player, skills) : undefined;
 
   let referenceBuild: ReferenceBuild | undefined;
-  if (request.referenceBuild.kind !== 'none') {
-    onProgress?.({ label: 'Loading the reference build' });
-    try {
-      referenceBuild = await loadReferenceBuild(request.referenceBuild, skills);
-    } catch (error) {
-      warnings.push(
-        `The reference build could not be loaded: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+  let referenceAlternatives: RaidBuildCandidate[] = [];
+  onProgress?.({ label: 'Choosing a MetaBattle raid build', detail: player.profession });
+  try {
+    const selection = await autoSelectRaidReference(
+      player.profession,
+      player,
+      skills,
+      request.referenceBuildPage,
+      isSupportRole(log, player),
+    );
+    referenceBuild = selection.chosen;
+    referenceAlternatives = selection.alternatives;
+  } catch (error) {
+    warnings.push(
+      `A MetaBattle raid reference build could not be chosen: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
   }
 
   let referenceLog: NormalizedLog | undefined;
@@ -149,5 +144,16 @@ export async function runAnalysisRequest(
     reference: referenceLog && referencePlayer ? { log: referenceLog, player: referencePlayer } : undefined,
   });
 
-  return { log, player, skills, build, referenceBuild, referenceLog, referencePlayer, result, warnings };
+  return {
+    log,
+    player,
+    skills,
+    build,
+    referenceBuild,
+    referenceAlternatives,
+    referenceLog,
+    referencePlayer,
+    result,
+    warnings,
+  };
 }

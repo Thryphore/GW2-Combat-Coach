@@ -29,6 +29,13 @@ export interface Metric {
   higherIsBetter?: boolean;
 }
 
+/** Nested observation shown inside a parent finding (e.g. a situational cut). */
+export interface FindingInsight {
+  title: string;
+  summary: string;
+  metrics?: Metric[];
+}
+
 export interface Finding {
   id: string;
   checkId: string;
@@ -40,6 +47,8 @@ export interface Finding {
   /** Where the analysis is approximate, say so on the finding itself. */
   caveat?: string;
   metrics?: Metric[];
+  /** Secondary observations that belong under this finding. */
+  insights?: FindingInsight[];
   evidence?: Evidence[];
   /** Points deducted from the execution score, 0-100. */
   impact?: number;

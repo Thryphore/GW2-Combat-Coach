@@ -22,6 +22,9 @@ const RAIN_OF_SWORDS = 45425;
 const THOUSAND_CUTS = 24755;
 const NULL_FIELD = 10203;
 const BLADESONG_HARMONY = 62586;
+const BLADESONG_DISTORTION = 68273;
+const BLADERTURN_REQUIEM = 62597;
+const BLADECALL = 69311;
 
 const ALACRITY = 30328;
 const QUICKNESS = 1187;
@@ -67,10 +70,19 @@ const CASTS: CastSpec[] = [
   // An Ethereal field with no finisher inside its two second lifetime.
   { id: NULL_FIELD, time: 18_000, duration: 600 },
 
+  // Blade generators while capped (stacks stay at 5 until the 20s spend).
+  { id: BLADECALL, time: 10_000, duration: 500 },
+  { id: BLADERTURN_REQUIEM, time: 11_000, duration: 0 },
+  { id: BLADECALL, time: 15_000, duration: 500 },
+
   { id: BLADESONG_HARMONY, time: 20_000, duration: 0 },
   { id: BLADESONG_HARMONY, time: 25_000, duration: 0 },
+  // F4 below five — intentional for defense; must not count as premature.
+  { id: BLADESONG_DISTORTION, time: 27_000, duration: 0 },
   { id: BLADESONG_HARMONY, time: 30_000, duration: 0 },
 
+  // Another generator while capped after 40s; F5 has recharged by then.
+  { id: BLADECALL, time: 41_000, duration: 500 },
   { id: MIND_SLASH, time: 42_000, duration: 500 },
 
   // Long silence between 42.5s and 55s.
@@ -169,6 +181,9 @@ export function virtuosoLogFixture(): EILog {
       [`s${THOUSAND_CUTS}`]: { name: 'Thousand Cuts' },
       [`s${NULL_FIELD}`]: { name: 'Null Field' },
       [`s${BLADESONG_HARMONY}`]: { name: 'Bladesong Harmony', isInstantCast: true },
+      [`s${BLADESONG_DISTORTION}`]: { name: 'Bladesong Distortion', isInstantCast: true },
+      [`s${BLADERTURN_REQUIEM}`]: { name: 'Bladeturn Requiem', isInstantCast: true },
+      [`s${BLADECALL}`]: { name: 'Bladecall' },
     },
     buffMap: {
       [`b${ALACRITY}`]: { name: 'Alacrity', stacking: false },

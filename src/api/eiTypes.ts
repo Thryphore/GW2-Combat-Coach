@@ -20,12 +20,46 @@ export interface EISkillDesc {
   icon?: string;
 }
 
+/**
+ * Elite Insights HTML-table classifications. Consumables use Nourishment (food),
+ * Enhancement (utility), and Other Consumable (tonics, malnourished, etc.).
+ */
+export type EIBuffClassification =
+  | 'Condition'
+  | 'Boon'
+  | 'Offensive'
+  | 'Defensive'
+  | 'Support'
+  | 'Debuff'
+  | 'Gear'
+  | 'Other'
+  | 'Enhancement'
+  | 'Nourishment'
+  | 'Other Consumable'
+  | string;
+
 export interface EIBuffDesc {
   name?: string;
   icon?: string;
   stacking?: boolean;
   consumable?: boolean;
+  classification?: EIBuffClassification;
   descriptions?: string[];
+}
+
+/** A food/utility/tonic application from the player's consumable timeline. */
+export interface EIConsumable {
+  id: number;
+  /** Application time in ms relative to fight start (negative = pre-applied). */
+  time: number;
+  /** Remaining duration in ms at application. */
+  duration: number;
+  stack?: number;
+  /**
+   * HTML-report slot from Elite Insights:
+   * 1 = Nourishment (food), 2 = Enhancement (utility), 0 = Other Consumable.
+   */
+  uniqueSlot?: number;
 }
 
 export interface EIDamageModDesc {
@@ -72,6 +106,18 @@ export interface EIBuffUptime {
   /** [time, stacks] pairs; the value holds until the next entry. */
   states?: number[][];
   statesPerSource?: Record<string, number[][]>;
+}
+
+export interface EIBuffGenerationData {
+  generation?: number;
+  generationPresence?: number;
+  overstack?: number;
+  wasted?: number;
+}
+
+export interface EIPlayerBuffsGeneration {
+  id: number;
+  buffData?: EIBuffGenerationData[];
 }
 
 export interface EIDamageModifierEntry {
@@ -176,7 +222,13 @@ export interface EIPlayer {
   defenses?: EIDefensesAll[];
   rotation?: EIRotation[];
   buffUptimes?: EIBuffUptime[];
+  /** Outgoing buff generation on the player's subgroup. */
+  groupBuffs?: EIPlayerBuffsGeneration[];
+  /** Outgoing buff generation on the squad. */
+  squadBuffs?: EIPlayerBuffsGeneration[];
   damageModifiers?: EIDamageModifierData[];
+  /** Food, utility, and other consumable applications for this player. */
+  consumables?: EIConsumable[];
   totalDamageDist?: EIDamageDist[][];
   targetDamageDist?: EIDamageDist[][][];
   deathRecap?: EIDeathRecap[];

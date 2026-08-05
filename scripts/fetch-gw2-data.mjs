@@ -18,7 +18,17 @@ const API = 'https://api.guildwars2.com/v2';
 const SCHEMA = '2019-12-19T00:00:00.000Z';
 
 const OUT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../src/data/gw2');
-const DEFAULT_PROFESSIONS = ['Mesmer'];
+const DEFAULT_PROFESSIONS = [
+  'Guardian',
+  'Warrior',
+  'Engineer',
+  'Ranger',
+  'Thief',
+  'Elementalist',
+  'Mesmer',
+  'Necromancer',
+  'Revenant',
+];
 
 async function getJson(url) {
   for (let attempt = 0; attempt < 4; attempt += 1) {

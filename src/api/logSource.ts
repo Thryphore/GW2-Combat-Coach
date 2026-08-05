@@ -1,4 +1,4 @@
-export type LogSourceKind = 'dpsreport';
+export type LogSourceKind = 'dpsreport' | 'wingman';
 
 export interface LogSource {
   kind: LogSourceKind;
@@ -31,9 +31,19 @@ function dpsReport(id: string, host = 'dps.report'): LogSource {
   };
 }
 
+function wingman(id: string, host = 'gw2wingman.nevermindcreations.de'): LogSource {
+  return {
+    kind: 'wingman',
+    id,
+    permalink: `https://${host}/log/${id}`,
+    jsonUrl: `https://${host}/api/getJson/${encodeURIComponent(id)}`,
+    serviceName: 'GW2 Wingman',
+  };
+}
+
 /**
- * Accepts a dps.report permalink or a bare log id and resolves the endpoint that
- * serves the Elite Insights JSON for it.
+ * Accepts a dps.report or GW2 Wingman permalink (or a bare log id) and resolves
+ * the endpoint that serves Elite Insights JSON for it.
  */
 export function parseLogInput(raw: string): LogSource {
   const input = raw.trim();
@@ -65,15 +75,17 @@ export function parseLogInput(raw: string): LogSource {
   }
 
   if (WINGMAN_HOSTS.has(host)) {
-    // Wingman's getJson endpoint serves the Elite Insights HTML-report schema,
-    // which is a different and less detailed shape than the standard EI JSON
-    // this app analyzes. Parsing it would silently downgrade the results.
-    throw new LogInputError(
-      'GW2 Wingman serves a different report format that this app cannot read yet. Paste the dps.report link for the same encounter instead.',
-    );
+    const parts = url.pathname.replace(/^\/+|\/+$/g, '').split('/');
+    // /log/<id>, /api/getJson/<id>, or bare /<id>
+    let id = '';
+    if (parts[0] === 'log' && parts[1]) id = parts[1];
+    else if (parts[0] === 'api' && parts[1] === 'getJson' && parts[2]) id = parts[2];
+    else if (parts.length === 1) id = parts[0];
+    if (!id) throw new LogInputError('That Wingman link is missing a report id.');
+    return wingman(id, host);
   }
 
   throw new LogInputError(
-    `Unsupported host "${url.hostname}". GW2 Combat Coach reads logs from dps.report.`,
+    `Unsupported host "${url.hostname}". GW2 Combat Coach reads logs from dps.report or GW2 Wingman.`,
   );
 }
