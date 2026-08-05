@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+.vite
+coverage
+
+# Large log fixtures pulled down for local experimentation
+src/analysis/__fixtures__/*.local.json
