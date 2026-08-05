@@ -72,16 +72,12 @@ export const referenceLogCheck: Check = {
       });
     }
 
-    const dpsDelta = player.dps - theirs.dps;
     const dpsRatio = theirs.dps > 0 ? player.dps / theirs.dps : 1;
     findings.push({
       id: 'reference-log/dps',
       checkId: 'reference-log',
       severity: dpsRatio < 0.8 ? 'warning' : dpsRatio < 0.95 ? 'info' : 'good',
-      title:
-        dpsDelta >= 0
-          ? `${compactNumber(player.dps)} DPS, ${compactNumber(Math.abs(dpsDelta))} ahead of the reference`
-          : `${compactNumber(player.dps)} DPS, ${compactNumber(Math.abs(dpsDelta))} behind the reference`,
+      title: `${compactNumber(player.dps)} DPS, ${percent(dpsRatio)} of the reference`,
       summary: `${player.name} on ${log.fightName} versus ${theirs.name} on ${reference.log.fightName}, which did ${compactNumber(theirs.dps)} DPS.`,
       caveat:
         'Encounter length, boss mechanics, target hitbox and group composition all move DPS independently of how well you played.',
@@ -163,11 +159,11 @@ export const referenceLogCheck: Check = {
               better: `You finished ${myChains.completed} of ${myChains.attempts} auto chains against the reference's ${percent(theirChains.completionRate)}.`,
               similar: `You finished ${percent(myChains.completionRate)} of auto chains against ${percent(theirChains.completionRate)} in the reference. That looks normal for this fight.`,
               info: `You completed ${percent(myChains.completionRate)} of chains versus ${percent(theirChains.completionRate)} in the reference. The final auto hit is the hard-hitting one.`,
-              warning: `Chain completion sat at ${percent(myChains.completionRate)} against ${percent(theirChains.completionRate)} in the reference — you are restarting chains mid-swing much more often.`,
+              warning: `Chain completion sat at ${percent(myChains.completionRate)} against ${percent(theirChains.completionRate)} in the reference — you are restarting chains before the final hit much more often.`,
             },
             fix: {
-              info: 'Let the chain finish before repositioning when the reference was able to.',
-              warning: 'Stop cutting autos short. Move between swings, not during them.',
+              info: 'When padding with autos, let the chain reach its last hit before casting the next skill, the way the reference did.',
+              warning: 'When padding with autos, let the chain reach its last hit before casting the next skill, the way the reference did.',
             },
             metrics: [
               {

@@ -111,9 +111,8 @@ export const autoAttackChainCheck: Check = {
         severity,
         title: `${count(drops.length, 'auto-attack chain')} restarted before finishing`,
         summary: `You completed ${completed} of ${attempts} chains (${percent(completionRate)}). The final hit of an auto chain is the biggest one, so dropping back to the first step throws that damage away.`,
-        detail:
-          'A chain restart that is not caused by a weapon swap or a long pause usually means the animation was cut short by moving, dodging, or turning away from the target mid-swing.',
-        fix: 'Let the chain finish before repositioning. If you need to move, do it during a skill you were going to cast anyway rather than mid-chain.',
+        tip: 'Auto-attacks advance through a fixed skill chain. A restart means the next auto was the first step again before the final hit landed — usually because another skill broke the auto queue, so when autos resumed they started over.',
+        fix: 'When you are padding with autos between skills, let the chain reach its last hit before casting the next skill. The final step is the hard-hitting one.',
         metrics: [
           {
             label: 'Chain completion',

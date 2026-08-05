@@ -37,7 +37,8 @@ General, for any profession:
 - **Cancelled casts** — separates casts aborted before firing (wasted time) from cancels after the skill fired
   (saved time).
 - **Downtime** — stretches where nothing was being cast while you were alive and in combat.
-- **Boon uptime** — supports are graded on Alacrity, Quickness, Fury and Might; pure DPS only sees Fury and Might.
+- **Boon uptime** — Alacrity and Quickness supports are graded on the chronoboon that role covers
+  (from the MetaBattle title or from squad generation). Might and Fury are not tracked.
 - **Combo fields and finishers** — pairs the fields you created with the finishers you fired.
 - **Cooldown usage** — actual cast spacing against base recharge, adjusted for your Alacrity uptime.
 - **Build comparison** — the build observed in your log against an automatically chosen MetaBattle raid build.

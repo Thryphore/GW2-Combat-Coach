@@ -44,6 +44,8 @@ export interface Finding {
   summary: string;
   detail?: string;
   fix?: string;
+  /** Short hover tip shown next to the title via an info icon. */
+  tip?: string;
   /** Where the analysis is approximate, say so on the finding itself. */
   caveat?: string;
   metrics?: Metric[];

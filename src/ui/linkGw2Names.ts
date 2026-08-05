@@ -9,6 +9,7 @@ export type Gw2TextPart = { kind: 'text'; value: string } | Gw2NameHit;
 interface NameCatalog {
   pattern: RegExp;
   byName: Map<string, Gw2NameHit>;
+  revision: number;
 }
 
 const catalogCache = new WeakMap<SkillIndex, NameCatalog>();
@@ -19,7 +20,7 @@ function escapeRegExp(value: string): string {
 
 function catalogFor(skills: SkillIndex): NameCatalog | undefined {
   const cached = catalogCache.get(skills);
-  if (cached) return cached;
+  if (cached && cached.revision === skills.revision) return cached;
 
   const byName = new Map<string, Gw2NameHit>();
 
@@ -40,7 +41,7 @@ function catalogFor(skills: SkillIndex): NameCatalog | undefined {
     'g',
   );
 
-  const catalog = { pattern, byName };
+  const catalog = { pattern, byName, revision: skills.revision };
   catalogCache.set(skills, catalog);
   return catalog;
 }

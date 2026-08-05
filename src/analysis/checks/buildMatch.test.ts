@@ -62,6 +62,8 @@ function observedBuild(options: {
       ['Sword', 'Focus'],
       ['Spear'],
     ],
+    weaponSkills: [],
+    professionSkills: [],
     heal:
       options.heal === null
         ? undefined

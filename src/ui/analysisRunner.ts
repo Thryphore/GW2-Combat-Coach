@@ -1,11 +1,17 @@
 import { fetchEliteInsightsJson, type FetchProgress } from '../api/fetchLog.ts';
-import { fetchSkillsLive, loadSkillIndex, type SkillIndex } from '../api/gw2.ts';
+import { fetchSkillsLive, loadSkillIndex, SkillIndex } from '../api/gw2.ts';
 import { autoSelectRaidReference, type RaidBuildCandidate } from '../api/metabattle.ts';
 import { parseLogInput } from '../api/logSource.ts';
 import { isSupportRole } from '../analysis/boonRole.ts';
 import { runAnalysis } from '../analysis/engine.ts';
 import type { AnalysisResult } from '../analysis/types.ts';
-import { inferBuild, type InferredBuild, type ReferenceBuild } from '../model/build.ts';
+import {
+  inferBuild,
+  seedSkillsFromLog,
+  weaponSkillsFromWeapons,
+  type InferredBuild,
+  type ReferenceBuild,
+} from '../model/build.ts';
 import { normalizeLog, pickDefaultPlayer, type NormalizedLog, type NormalizedPlayer } from '../model/normalize.ts';
 
 export interface AnalysisRequest {
@@ -53,11 +59,15 @@ function describeFetch(progress: FetchProgress, what: string): RunnerProgress {
 }
 
 /** Fills in metadata for skills the shipped snapshot does not cover. */
-async function enrichSkills(skills: SkillIndex, player: NormalizedPlayer): Promise<void> {
-  const missing = [...new Set(player.casts.map((cast) => cast.skillId))].filter((id) => !skills.skill(id));
+async function enrichSkills(skills: SkillIndex, ids: Iterable<number>): Promise<void> {
+  const missing = [...new Set(ids)].filter((id) => Number.isFinite(id) && id > 0 && !skills.skill(id));
   if (missing.length === 0) return;
   const fetched = await fetchSkillsLive(missing);
   skills.addSkills(fetched);
+}
+
+function castSkillIds(player: NormalizedPlayer): number[] {
+  return player.casts.map((cast) => cast.skillId);
 }
 
 export async function runAnalysisRequest(
@@ -81,16 +91,19 @@ export async function runAnalysisRequest(
   if (!player) throw new Error('That log contains no players to analyze.');
 
   onProgress?.({ label: 'Loading skill data', detail: player.profession });
-  const skills = await loadSkillIndex(player.profession);
+  let skills = await loadSkillIndex(player.profession);
   if (!skills) {
     warnings.push(
-      `No GW2 skill data is bundled for ${player.profession} yet, so checks that need skill metadata were skipped.`,
+      `No GW2 skill snapshot is bundled for ${player.profession} yet, so profession-specific metadata is limited.`,
     );
-  } else {
-    await enrichSkills(skills, player);
+    skills = SkillIndex.empty(player.profession);
   }
 
-  const build = skills ? inferBuild(log, player, skills) : undefined;
+  // Live API first so thin EI stubs cannot block richer skill records.
+  await enrichSkills(skills, castSkillIds(player));
+  seedSkillsFromLog(skills, log);
+
+  const build = inferBuild(log, player, skills);
 
   let referenceBuild: ReferenceBuild | undefined;
   let referenceAlternatives: RaidBuildCandidate[] = [];
@@ -105,6 +118,12 @@ export async function runAnalysisRequest(
     );
     referenceBuild = selection.chosen;
     referenceAlternatives = selection.alternatives;
+    if (referenceBuild && !referenceBuild.weaponSkills?.length) {
+      referenceBuild = {
+        ...referenceBuild,
+        weaponSkills: weaponSkillsFromWeapons(referenceBuild.weapons, skills),
+      };
+    }
   } catch (error) {
     warnings.push(
       `A MetaBattle raid reference build could not be chosen: ${
@@ -126,6 +145,10 @@ export async function runAnalysisRequest(
       referencePlayer =
         referenceLog.players.find((candidate) => candidate.profession === player.profession) ??
         pickDefaultPlayer(referenceLog);
+      if (referencePlayer) {
+        await enrichSkills(skills, castSkillIds(referencePlayer));
+        seedSkillsFromLog(skills, referenceLog);
+      }
     } catch (error) {
       warnings.push(
         `The reference log could not be loaded: ${error instanceof Error ? error.message : String(error)}`,

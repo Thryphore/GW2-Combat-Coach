@@ -1,5 +1,6 @@
 import type { SkillIndex } from '../api/gw2.ts';
 import type { BuildSkillRef, BuildTraitRef, ReferenceBuild, ReferenceSpecialization } from './build.ts';
+import { weaponSkillsFromWeapons } from './build.ts';
 
 export class ChatCodeError extends Error {}
 
@@ -151,6 +152,7 @@ export function referenceBuildFromChatCode(
     profession: decoded.professionName,
     eliteSpec,
     weapons: meta.weapons ?? [],
+    weaponSkills: weaponSkillsFromWeapons(meta.weapons ?? [], skills),
     heal: paletteToSkillRef(decoded.palettes.heal, skills),
     utilities: decoded.palettes.utilities
       .map((palette) => paletteToSkillRef(palette, skills))

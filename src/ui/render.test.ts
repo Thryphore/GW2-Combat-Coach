@@ -78,12 +78,35 @@ describe('result components', () => {
     expect(html).toContain('>1<');
   });
 
-  it('renders the timeline with personal boons for a DPS log', () => {
+  it('renders a hover tip icon when a finding has a tip', () => {
+    const html = renderToStaticMarkup(
+      createElement(FindingCard, {
+        finding: {
+          id: 'auto-attack-chain/dropped',
+          checkId: 'auto-attack-chain',
+          severity: 'warning',
+          title: '3 auto-attack chains restarted before finishing',
+          summary: 'You completed 7 of 10 chains.',
+          tip: 'Auto-attacks advance through a fixed skill chain. A restart means the next auto was the first step again before the final hit landed — usually because another skill broke the auto queue, so when autos resumed they started over.',
+        },
+        skills,
+        build,
+      }),
+    );
+    expect(html).toContain('More about this finding');
+    expect(html).toContain('>i<');
+    // Tip content is portal/hover-only, so it should not appear in the static markup.
+    expect(html).not.toContain('broke the auto queue');
+  });
+
+  it('renders the timeline without support chronoboons on a DPS log', () => {
     const html = renderToStaticMarkup(createElement(Timeline, { log, player, build, skills }));
     // Support boons are only listed as rows for support roles; the footnote may still mention them.
     expect(html).not.toMatch(/>Alacrity</);
+    expect(html).not.toMatch(/>Quickness</);
+    expect(html).not.toMatch(/>Fury</);
+    expect(html).not.toMatch(/>Might</);
     expect(html).toContain('Blades');
-    expect(html).toContain('Fury');
     expect(html).toContain('Casts');
   });
 
@@ -134,8 +157,10 @@ describe('result components', () => {
     expect(html).toContain('Utility');
     expect(html).toContain('Writ of Masterful Malice');
     expect(html).toContain('Cilantro and Cured Meat Flatbread');
+    expect(html).toContain('Heal / utility / elite');
     // Default keybinds: heal=6, utilities=7–9, elite=0
     expect(html).toContain('>6<');
     expect(html).toContain('>0<');
   });
 });
+

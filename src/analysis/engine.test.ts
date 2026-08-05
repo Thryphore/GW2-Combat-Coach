@@ -86,11 +86,11 @@ describe('downtime check', () => {
 });
 
 describe('boon uptime check', () => {
-  it('skips alacrity and quickness on a DPS log, and keeps personal offensive boons', () => {
+  it('skips chronoboon and offensive boon findings on a DPS log', () => {
     expect(finding('boon-uptime/alacrity')).toBeUndefined();
     expect(finding('boon-uptime/quickness')).toBeUndefined();
-    expect(finding('boon-uptime/fury')?.severity).toBe('good');
-    expect(finding('boon-uptime/might')?.severity).toBe('good');
+    expect(finding('boon-uptime/fury')).toBeUndefined();
+    expect(finding('boon-uptime/might')).toBeUndefined();
   });
 });
 
@@ -145,6 +145,8 @@ describe('build inference', () => {
     expect(build.heal?.name).toBe('Signet of the Ether');
     expect(build.utilities.map((skill) => skill.name)).toEqual(['Rain of Swords', 'Null Field']);
     expect(build.elite?.name).toBe('Thousand Cuts');
+    expect(build.weaponSkills.some((skill) => skill.slot === 'Weapon_1')).toBe(true);
+    expect(build.professionSkills.length).toBeGreaterThan(0);
     expect(build.traits.map((trait) => trait.name)).toEqual(['Infinite Forge', 'Mental Focus']);
     expect(build.specializations).toContain('Virtuoso');
   });

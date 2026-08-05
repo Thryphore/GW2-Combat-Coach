@@ -12,14 +12,14 @@ describe('boon role detection', () => {
     expect(isSupportBuildName('Dragonhunter - Power DPS')).toBe(false);
   });
 
-  it('hides chronoboons for a DPS log without support generation', () => {
+  it('tracks no boons for a DPS log without support generation', () => {
     const log = normalizeLog(virtuosoLogFixture(), fixtureSource);
     const player = pickDefaultPlayer(log)!;
     expect(isSupportRole(log, player)).toBe(false);
-    expect(boonsForRole(log, player)).toEqual(['Fury', 'Might']);
+    expect(boonsForRole(log, player)).toEqual([]);
   });
 
-  it('shows the full upkeep set when the reference build is a support page', () => {
+  it('tracks only Quickness for a Quickness Support reference build', () => {
     const log = normalizeLog(virtuosoLogFixture(), fixtureSource);
     const player = pickDefaultPlayer(log)!;
     const referenceBuild = {
@@ -33,12 +33,34 @@ describe('boon role detection', () => {
     } satisfies ReferenceBuild;
 
     expect(isSupportRole(log, player, referenceBuild)).toBe(true);
-    expect(boonsForRole(log, player, referenceBuild)).toEqual([
-      'Alacrity',
-      'Quickness',
-      'Fury',
-      'Might',
-    ]);
+    expect(boonsForRole(log, player, referenceBuild)).toEqual(['Quickness']);
+
+    const result = runAnalysis({
+      log,
+      player,
+      window: log.fullFight,
+      referenceBuild,
+    });
+    expect(result.findings.some((finding) => finding.id === 'boon-uptime/quickness')).toBe(true);
+    expect(result.findings.some((finding) => finding.id === 'boon-uptime/alacrity')).toBe(false);
+    expect(result.findings.some((finding) => finding.id === 'boon-uptime/fury')).toBe(false);
+    expect(result.findings.some((finding) => finding.id === 'boon-uptime/might')).toBe(false);
+  });
+
+  it('tracks only Alacrity for an Alacrity Support reference build', () => {
+    const log = normalizeLog(virtuosoLogFixture(), fixtureSource);
+    const player = pickDefaultPlayer(log)!;
+    const referenceBuild = {
+      name: 'Mechanist - Alacrity Support Power DPS',
+      source: 'metabattle',
+      profession: 'Engineer',
+      eliteSpec: 'Mechanist',
+      weapons: [],
+      utilities: [],
+      specializations: [],
+    } satisfies ReferenceBuild;
+
+    expect(boonsForRole(log, player, referenceBuild)).toEqual(['Alacrity']);
 
     const result = runAnalysis({
       log,
@@ -47,15 +69,16 @@ describe('boon role detection', () => {
       referenceBuild,
     });
     expect(result.findings.some((finding) => finding.id === 'boon-uptime/alacrity')).toBe(true);
+    expect(result.findings.some((finding) => finding.id === 'boon-uptime/quickness')).toBe(false);
   });
 
-  it('detects supports from squad chronoboon generation', () => {
+  it('detects supports from squad chronoboon generation and tracks what they provide', () => {
     const raw = virtuosoLogFixture();
     raw.players![0].squadBuffs = [{ id: 1187, buffData: [{ generation: 24 }] }];
     const log = normalizeLog(raw, fixtureSource);
     const player = pickDefaultPlayer(log)!;
 
     expect(isSupportRole(log, player)).toBe(true);
-    expect(boonsForRole(log, player)).toContain('Quickness');
+    expect(boonsForRole(log, player)).toEqual(['Quickness']);
   });
 });

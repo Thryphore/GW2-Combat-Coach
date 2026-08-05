@@ -1,5 +1,6 @@
 import type { SkillIndex } from '../api/gw2.ts';
 import type { NormalizedLog, NormalizedPlayer } from './normalize.ts';
+import { resolveEiIcon } from './normalize.ts';
 
 export interface BuildSkillRef {
   id?: number;
@@ -23,6 +24,10 @@ export interface BuildTraitRef {
 export interface InferredBuild {
   profession: string;
   weaponSets: string[][];
+  /** Weapon-bar skills seen in the log, ordered by slots 1–5. */
+  weaponSkills: BuildSkillRef[];
+  /** Profession/F-bar skills seen in the log, ordered by F1–F5. */
+  professionSkills: BuildSkillRef[];
   heal?: BuildSkillRef;
   utilities: BuildSkillRef[];
   elite?: BuildSkillRef;
@@ -49,6 +54,9 @@ export interface ReferenceBuild {
   profession: string;
   eliteSpec?: string;
   weapons: string[];
+  /** Resolved from `weapons` + the profession snapshot when available. */
+  weaponSkills?: BuildSkillRef[];
+  professionSkills?: BuildSkillRef[];
   heal?: BuildSkillRef;
   utilities: BuildSkillRef[];
   elite?: BuildSkillRef;
@@ -65,6 +73,58 @@ function toSkillRef(id: number, skills: SkillIndex | undefined, fallbackName: st
     slot: skill?.slot,
     icon: skill?.icon,
   };
+}
+
+const WEAPON_SLOTS = ['Weapon_1', 'Weapon_2', 'Weapon_3', 'Weapon_4', 'Weapon_5'] as const;
+const PROFESSION_SLOTS = [
+  'Profession_1',
+  'Profession_2',
+  'Profession_3',
+  'Profession_4',
+  'Profession_5',
+] as const;
+
+function orderedSlotSkills(
+  bySlot: Map<string, BuildSkillRef>,
+  slots: readonly string[],
+): BuildSkillRef[] {
+  return slots.map((slot) => bySlot.get(slot)).filter((skill): skill is BuildSkillRef => !!skill);
+}
+
+/**
+ * Resolves the default weapon-bar skills for a set of equipped weapons from the
+ * GW2 profession snapshot (used for MetaBattle / chat-code reference builds).
+ */
+export function weaponSkillsFromWeapons(
+  weapons: string[],
+  skills: SkillIndex | undefined,
+): BuildSkillRef[] {
+  if (!skills || weapons.length === 0) return [];
+
+  const bySlot = new Map<string, BuildSkillRef>();
+  for (const weaponName of weapons) {
+    const weapon = skills.weapons[weaponName];
+    if (!weapon) continue;
+    for (const entry of weapon.skills) {
+      if (!WEAPON_SLOTS.includes(entry.slot as (typeof WEAPON_SLOTS)[number])) continue;
+      // Later weapons in the set (typically the offhand) overwrite shared slots.
+      if (entry.offhand) {
+        const offhandEquipped = weapons.some(
+          (name) => name.toLowerCase() === entry.offhand!.toLowerCase(),
+        );
+        if (!offhandEquipped) continue;
+      }
+      const skill = skills.skill(entry.id);
+      if (!skill) continue;
+      bySlot.set(entry.slot, {
+        id: skill.id,
+        name: skill.name,
+        slot: skill.slot ?? entry.slot,
+        icon: skill.icon,
+      });
+    }
+  }
+  return orderedSlotSkills(bySlot, WEAPON_SLOTS);
 }
 
 /**
@@ -85,6 +145,8 @@ export function inferBuild(
   let heal: BuildSkillRef | undefined;
   let elite: BuildSkillRef | undefined;
   const utilities: BuildSkillRef[] = [];
+  const weaponBySlot = new Map<string, BuildSkillRef>();
+  const professionBySlot = new Map<string, BuildSkillRef>();
 
   for (const cast of player.casts) {
     if (seen.has(cast.skillId)) continue;
@@ -92,9 +154,25 @@ export function inferBuild(
     const slot = skills?.skill(cast.skillId)?.slot;
     if (!slot) continue;
     const ref = toSkillRef(cast.skillId, skills, cast.name);
+
     if (slot === 'Heal' && !heal) heal = ref;
     else if (slot === 'Elite' && !elite) elite = ref;
     else if (slot === 'Utility' && utilities.length < 3) utilities.push(ref);
+    else if (WEAPON_SLOTS.includes(slot as (typeof WEAPON_SLOTS)[number])) {
+      const chain = skills?.chainPosition(cast.skillId);
+      if (chain && chain.step > 1) {
+        const root = skills?.skill(chain.rootId);
+        if (root && !weaponBySlot.has(slot)) {
+          weaponBySlot.set(slot, toSkillRef(root.id, skills, root.name));
+        } else if (!weaponBySlot.has(slot)) {
+          weaponBySlot.set(slot, ref);
+        }
+      } else if (!weaponBySlot.has(slot)) {
+        weaponBySlot.set(slot, ref);
+      }
+    } else if (PROFESSION_SLOTS.includes(slot as (typeof PROFESSION_SLOTS)[number])) {
+      if (!professionBySlot.has(slot)) professionBySlot.set(slot, ref);
+    }
   }
 
   if (!heal) notes.push('No healing skill was cast, so it could not be identified.');
@@ -149,6 +227,8 @@ export function inferBuild(
   return {
     profession: player.profession,
     weaponSets,
+    weaponSkills: orderedSlotSkills(weaponBySlot, WEAPON_SLOTS),
+    professionSkills: orderedSlotSkills(professionBySlot, PROFESSION_SLOTS),
     heal,
     utilities,
     elite,
@@ -156,4 +236,19 @@ export function inferBuild(
     specializations,
     notes,
   };
+}
+
+/** Seeds thin skill records from Elite Insights so UI chips work without a live API hit. */
+export function seedSkillsFromLog(skills: SkillIndex, log: NormalizedLog): void {
+  const extras = [];
+  for (const [id, desc] of log.skills) {
+    if (skills.skill(id)) continue;
+    if (!desc.name) continue;
+    extras.push({
+      id,
+      name: desc.name,
+      icon: resolveEiIcon(desc.icon),
+    });
+  }
+  skills.addSkills(extras);
 }

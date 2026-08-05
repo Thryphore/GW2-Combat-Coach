@@ -2,6 +2,7 @@ import type { SkillIndex } from '../../api/gw2.ts';
 import { timestamp } from '../../analysis/format.ts';
 import type { Finding, Metric } from '../../analysis/types.ts';
 import type { InferredBuild, ReferenceBuild } from '../../model/build.ts';
+import { HoverTooltip } from './HoverTooltip.tsx';
 import { SkillLinkedText } from './SkillLinkedText.tsx';
 import { SEVERITY_STYLES } from './severity.ts';
 
@@ -56,8 +57,24 @@ export function FindingCard({
       <div className={`h-0.5 w-full ${style.bar}`} />
       <div className="p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h3 className="text-base font-semibold text-white">
-            <SkillLinkedText text={finding.title} {...link} />
+          <h3 className="flex items-center gap-1.5 text-base font-semibold text-white">
+            <span>
+              <SkillLinkedText text={finding.title} {...link} />
+            </span>
+            {finding.tip && (
+              <HoverTooltip
+                content={<p className="text-xs leading-snug text-ink-200">{finding.tip}</p>}
+                className="inline-flex shrink-0"
+              >
+                <button
+                  type="button"
+                  className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-semibold leading-none text-ink-400 ring-1 ring-inset ring-ink-500 transition hover:text-ink-200 hover:ring-ink-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                  aria-label="More about this finding"
+                >
+                  i
+                </button>
+              </HoverTooltip>
+            )}
           </h3>
           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${style.chip}`}>
             {style.label}

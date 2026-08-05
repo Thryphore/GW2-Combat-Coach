@@ -133,6 +133,9 @@ export class SkillIndex {
   private readonly chains = new Map<number, ChainPosition>();
   private readonly extra = new Map<number, SkillInfo>();
 
+  /** Bumped when live/log extras are added so UI name catalogs rebuild. */
+  revision = 0;
+
   constructor(private readonly snapshot: ProfessionSnapshot) {
     for (const skill of Object.values(snapshot.skills)) {
       const key = skill.name.toLowerCase();
@@ -142,6 +145,19 @@ export class SkillIndex {
       this.paletteToSkill.set(palette, skillId);
     }
     this.buildChains();
+  }
+
+  /** Minimal index used when no profession snapshot is bundled. */
+  static empty(profession: string): SkillIndex {
+    return new SkillIndex({
+      generatedAt: new Date().toISOString().slice(0, 10),
+      profession,
+      specializations: [],
+      traits: {},
+      skills: {},
+      weapons: {},
+      skillsByPalette: [],
+    });
   }
 
   get profession(): string {
@@ -271,7 +287,10 @@ export class SkillIndex {
       added = true;
     }
     // Live-fetched chain members need to participate in chainPosition().
-    if (added) this.buildChains();
+    if (added) {
+      this.revision += 1;
+      this.buildChains();
+    }
   }
 }
 

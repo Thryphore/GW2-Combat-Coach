@@ -200,7 +200,19 @@ export function BuildPanel({
               </div>
             )}
             <SkillRow
-              label="Skills"
+              label="Weapon skills"
+              skills={build.weaponSkills}
+              skillIndex={skills}
+              utilities={observedUtilities}
+            />
+            <SkillRow
+              label="Profession skills"
+              skills={build.professionSkills}
+              skillIndex={skills}
+              utilities={observedUtilities}
+            />
+            <SkillRow
+              label="Heal / utility / elite"
               skills={[build.heal, ...build.utilities, build.elite].filter(Boolean) as BuildSkillRef[]}
               skillIndex={skills}
               utilities={observedUtilities}
@@ -255,7 +267,19 @@ export function BuildPanel({
 
           <div className="mt-4 space-y-3">
             <SkillRow
-              label="Skills"
+              label="Weapon skills"
+              skills={reference.weaponSkills ?? []}
+              skillIndex={skills}
+              utilities={referenceUtilities}
+            />
+            <SkillRow
+              label="Profession skills"
+              skills={reference.professionSkills ?? []}
+              skillIndex={skills}
+              utilities={referenceUtilities}
+            />
+            <SkillRow
+              label="Heal / utility / elite"
               skills={[reference.heal, ...reference.utilities, reference.elite].filter(Boolean) as BuildSkillRef[]}
               skillIndex={skills}
               utilities={referenceUtilities}
