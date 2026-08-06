@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { AI_MODEL_OPTIONS, type AiModelChoice } from '../../ai/models.ts';
 import {
   formatKeyEvent,
   KEYBIND_SLOT_LABELS,
@@ -119,6 +120,7 @@ export function SettingsModal({ open, onClose }: Props) {
     setKeybind,
     resetKeybinds,
     setShowKeybinds,
+    setAiModel,
     keybindsAreDefault,
   } = useSettings();
   const [listening, setListening] = useState<KeybindSlot | null>(null);
@@ -252,6 +254,38 @@ export function SettingsModal({ open, onClose }: Props) {
               </span>
             </span>
           </label>
+        </section>
+
+        <section className="mt-6 border-t border-ink-800 pt-5">
+          <h3 className="text-sm font-semibold tracking-wide text-ink-400 uppercase">
+            Local AI <span className="text-warn-500">(beta)</span>
+          </h3>
+          <p className="mt-1 text-xs leading-relaxed text-ink-400">
+            Experimental. Open-ended replies can hallucinate — always verify against the report.
+            Simple DPS / improve questions use the report directly. Larger models need a bigger
+            one-time download.
+          </p>
+          <div className="mt-3 space-y-2">
+            {AI_MODEL_OPTIONS.map((option) => (
+              <label
+                key={option.id}
+                className="flex cursor-pointer items-start gap-3 rounded-xl border border-ink-700 bg-ink-900/40 px-4 py-3 hover:border-ink-600"
+              >
+                <input
+                  type="radio"
+                  name="ai-model"
+                  value={option.id}
+                  checked={settings.aiModel === option.id}
+                  onChange={() => setAiModel(option.id as AiModelChoice)}
+                  className="mt-0.5 h-4 w-4 border-ink-600 bg-ink-900 text-brand-500 focus:ring-brand-400"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-ink-200">{option.label}</span>
+                  <span className="mt-0.5 block text-xs text-ink-400">{option.description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
         </section>
 
         <div className="mt-6 flex justify-end">

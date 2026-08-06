@@ -13,6 +13,7 @@ import {
   type KeybindSlot,
   type Keybinds,
 } from './keybinds.ts';
+import type { AiModelChoice } from '../../ai/models.ts';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type AppSettings } from './storage.ts';
 
 interface SettingsContextValue {
@@ -20,6 +21,7 @@ interface SettingsContextValue {
   setKeybind: (slot: KeybindSlot, bind: string) => void;
   resetKeybinds: () => void;
   setShowKeybinds: (show: boolean) => void;
+  setAiModel: (model: AiModelChoice) => void;
   keybindsAreDefault: boolean;
   /** Resolve a skill slot to the user's current keybind. */
   resolveKeybind: (slot?: string, utilityIndex?: number) => string | undefined;
@@ -30,6 +32,7 @@ const SettingsContext = createContext<SettingsContextValue>({
   setKeybind: () => {},
   resetKeybinds: () => {},
   setShowKeybinds: () => {},
+  setAiModel: () => {},
   keybindsAreDefault: true,
   resolveKeybind: (slot, utilityIndex) => skillKeybind(slot, utilityIndex),
 });
@@ -66,6 +69,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     [commit],
   );
 
+  const setAiModel = useCallback(
+    (model: AiModelChoice) => {
+      commit((prev) => ({ ...prev, aiModel: model }));
+    },
+    [commit],
+  );
+
   const resolveKeybind = useCallback(
     (slot?: string, utilityIndex?: number) => skillKeybind(slot, utilityIndex, settings.keybinds),
     [settings.keybinds],
@@ -77,10 +87,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setKeybind,
       resetKeybinds,
       setShowKeybinds,
+      setAiModel,
       keybindsAreDefault: keybindsEqual(settings.keybinds, DEFAULT_KEYBINDS),
       resolveKeybind,
     }),
-    [settings, setKeybind, resetKeybinds, setShowKeybinds, resolveKeybind],
+    [settings, setKeybind, resetKeybinds, setShowKeybinds, setAiModel, resolveKeybind],
   );
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
