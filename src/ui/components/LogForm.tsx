@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { DropdownChevron } from './DropdownChevron.tsx';
 
 export interface FormValues {
   logInput: string;
@@ -52,7 +53,8 @@ export function LogForm({ initial, busy, onSubmit }: Props) {
       </div>
 
       <details className="group mt-4">
-        <summary className="cursor-pointer list-none text-sm font-medium text-brand-400 hover:text-brand-500">
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-brand-400 hover:text-brand-500 [&::-webkit-details-marker]:hidden">
+          <DropdownChevron />
           <span className="group-open:hidden">Compare against a reference log</span>
           <span className="hidden group-open:inline">Hide reference log</span>
         </summary>

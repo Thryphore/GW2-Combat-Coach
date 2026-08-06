@@ -110,8 +110,8 @@ export const autoAttackChainCheck: Check = {
         checkId: 'auto-attack-chain',
         severity,
         title: `${count(drops.length, 'auto-attack chain')} restarted before finishing`,
-        summary: `You completed ${completed} of ${attempts} chains (${percent(completionRate)}). The final hit of an auto chain is the biggest one, so dropping back to the first step throws that damage away.`,
-        tip: 'Auto-attacks advance through a fixed skill chain. A restart means the next auto was the first step again before the final hit landed — usually because another skill broke the auto queue, so when autos resumed they started over.',
+        summary: `You completed ${completed} of ${attempts} chains (${percent(completionRate)}).`,
+        tip: 'Auto-attacks advance through a fixed skill chain. The final hit is the biggest one, so dropping back to the first step throws that damage away. A restart means the next auto was the first step again before the final hit landed — usually because another skill broke the auto queue, so when autos resumed they started over.',
         fix: 'When you are padding with autos between skills, let the chain reach its last hit before casting the next skill. The final step is the hard-hitting one.',
         metrics: [
           {

@@ -1,6 +1,14 @@
+import type { SkillIndex } from '../../api/gw2.ts';
 import { scoreLabel } from '../../analysis/engine.ts';
 import { compactNumber, duration } from '../../analysis/format.ts';
-import type { NormalizedLog, NormalizedPlayer } from '../../model/normalize.ts';
+import type { InferredBuild, ReferenceBuild } from '../../model/build.ts';
+import {
+  shouldShowCleaveDps,
+  type NormalizedLog,
+  type NormalizedPlayer,
+} from '../../model/normalize.ts';
+import { AtAGlance } from './AtAGlance.tsx';
+import { Timeline } from './Timeline.tsx';
 
 function ScoreRing({ score }: { score: number }) {
   const radius = 34;
@@ -46,16 +54,45 @@ interface Props {
   score: number;
   players: NormalizedPlayer[];
   onSelectPlayer: (name: string) => void;
+  referenceBuild?: ReferenceBuild;
+  build?: InferredBuild;
+  skills?: SkillIndex;
+  /** Optional DPS comparison target (pasted reference or auto top log). */
+  compare?: { dps: number; cleaveDps: number; label: string };
+  /** Finding ids available to jump to from the at-a-glance dashboard. */
+  findingIds?: readonly string[];
+  /** Findings under "Not shown above" — hide matching dashboard tiles. */
+  hiddenFindingIds?: readonly string[];
 }
 
-export function SummaryHeader({ log, player, score, players, onSelectPlayer }: Props) {
+export function SummaryHeader({
+  log,
+  player,
+  score,
+  players,
+  onSelectPlayer,
+  referenceBuild,
+  build,
+  skills,
+  compare,
+  findingIds,
+  hiddenFindingIds,
+}: Props) {
   return (
     <section className="rounded-2xl border border-ink-700 bg-ink-850/70 p-5">
       <div className="flex flex-wrap items-center gap-5">
         <ScoreRing score={score} />
 
         <div className="min-w-56 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {log.fightIcon && (
+              <img
+                src={log.fightIcon}
+                alt=""
+                className="h-10 w-10 shrink-0 rounded-lg bg-ink-800 object-contain ring-1 ring-ink-700"
+                loading="lazy"
+              />
+            )}
             <h2 className="text-xl font-semibold text-white">{log.fightName}</h2>
             <span
               className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
@@ -106,11 +143,31 @@ export function SummaryHeader({ log, player, score, players, onSelectPlayer }: P
 
         <div className="flex flex-wrap gap-6">
           <Stat label="DPS" value={compactNumber(player.dps)} />
+          {shouldShowCleaveDps(player) && (
+            <Stat label="Cleave DPS" value={compactNumber(player.cleaveDps)} />
+          )}
           <Stat label="Damage" value={compactNumber(player.damage)} />
           <Stat label="Duration" value={duration(log.durationMs)} />
-          <Stat label="Deaths" value={String(player.deaths)} />
         </div>
       </div>
+
+      <Timeline
+        log={log}
+        player={player}
+        referenceBuild={referenceBuild}
+        build={build}
+        skills={skills}
+        embedded
+      />
+
+      <AtAGlance
+        log={log}
+        player={player}
+        skills={skills}
+        compare={compare}
+        findingIds={findingIds}
+        hiddenFindingIds={hiddenFindingIds}
+      />
     </section>
   );
 }

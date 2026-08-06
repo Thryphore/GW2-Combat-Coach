@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_KEYBINDS, mergeKeybinds } from './settings/keybinds.ts';
 import { skillKeybind, skillSlotLabel } from './skillKeybind.ts';
 
 describe('skillKeybind', () => {
@@ -22,6 +23,15 @@ describe('skillKeybind', () => {
   it('ignores unknown slots', () => {
     expect(skillKeybind('Toolbelt')).toBeUndefined();
     expect(skillKeybind(undefined)).toBeUndefined();
+  });
+
+  it('honors custom keybind remaps', () => {
+    const remapped = mergeKeybinds({ elite: 'E', weapon1: 'Q' });
+    expect(skillKeybind('Elite', undefined, remapped)).toBe('E');
+    expect(skillKeybind('Weapon_1', undefined, remapped)).toBe('Q');
+    expect(skillKeybind('Heal', undefined, remapped)).toBe('6');
+    expect(skillKeybind('Utility', 1, remapped)).toBe('8');
+    expect(remapped).not.toBe(DEFAULT_KEYBINDS);
   });
 });
 

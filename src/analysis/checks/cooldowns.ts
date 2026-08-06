@@ -103,6 +103,9 @@ export function measureCooldownHolds(
   };
 }
 
+/** Summary used when missed casts/min are within 0.75 of the reference — safe to hide in the main list. */
+export const COOLDOWN_NORMAL_SUMMARY = 'Cooldown holds look normal for this fight.';
+
 export const cooldownCheck: Check = {
   id: 'cooldowns',
   name: 'Cooldown usage',
@@ -132,46 +135,70 @@ export const cooldownCheck: Check = {
       else if (delta > 2) severity = missedPerMinute > 6 ? 'critical' : 'warning';
     }
 
-    let summary = `Across ${count(idles.length, 'skill')} you sat on recharged cooldowns long enough to fit roughly ${Math.round(totalMissed)} more casts (${missedPerMinute.toFixed(1)} per minute). The biggest was ${idles[0].name}.`;
+    const facts = `Across ${count(idles.length, 'skill')} you sat on recharged cooldowns long enough to fit roughly ${Math.round(totalMissed)} more casts (${missedPerMinute.toFixed(1)} per minute). The biggest was ${idles[0].name}.`;
+
+    let summary: string;
+    let tip: string;
     if (refMeasured) {
       const delta = missedPerMinute - refMeasured.missedPerMinute;
       if (delta <= 0.75) {
-        summary += ` The reference missed about ${refMeasured.missedPerMinute.toFixed(1)}/min — holding cooldowns at this rate looks normal for the fight.`;
+        summary = COOLDOWN_NORMAL_SUMMARY;
+        tip = `${facts} The reference missed about ${refMeasured.missedPerMinute.toFixed(1)}/min — holding cooldowns at this rate looks normal for the fight.`;
       } else {
-        summary += ` The reference only missed about ${refMeasured.missedPerMinute.toFixed(1)}/min (${Math.round(refMeasured.totalMissed)} casts), so you are sitting on recharges more than that log did.`;
+        summary = 'You are sitting on recharges more than the reference did.';
+        tip = `${facts} The reference only missed about ${refMeasured.missedPerMinute.toFixed(1)}/min (${Math.round(refMeasured.totalMissed)} casts).`;
       }
+    } else {
+      summary = `About ${missedPerMinute.toFixed(1)} missed casts per minute, led by ${idles[0].name}.`;
+      tip = facts;
     }
 
-    const metrics: Metric[] = [
-      {
-        label: 'Your missed casts/min',
-        display: missedPerMinute.toFixed(1),
-        value: missedPerMinute,
-        target: refMeasured ? refMeasured.missedPerMinute : 2,
-        higherIsBetter: false,
-      },
-    ];
+    const metrics: Metric[] = [];
     if (refMeasured) {
-      metrics.push({
-        label: 'Reference missed casts/min',
-        display: refMeasured.missedPerMinute.toFixed(1),
-        value: refMeasured.missedPerMinute,
-        higherIsBetter: false,
-      });
-      metrics.push({
-        label: 'Your missed casts',
-        display: Math.round(totalMissed).toString(),
-        value: totalMissed,
-        target: refMeasured.totalMissed,
-        higherIsBetter: false,
-      });
+      const rateMax = Math.max(missedPerMinute, refMeasured.missedPerMinute, 0.01);
+      const castMax = Math.max(totalMissed, refMeasured.totalMissed, 0.01);
+      metrics.push(
+        {
+          label: 'Your missed casts/min',
+          display: missedPerMinute.toFixed(1),
+          value: missedPerMinute,
+          target: refMeasured.missedPerMinute,
+          barMax: rateMax,
+          higherIsBetter: false,
+        },
+        {
+          label: 'Reference missed casts/min',
+          display: refMeasured.missedPerMinute.toFixed(1),
+          value: refMeasured.missedPerMinute,
+          target: refMeasured.missedPerMinute,
+          barMax: rateMax,
+          higherIsBetter: false,
+        },
+        {
+          label: 'Your missed casts',
+          display: Math.round(totalMissed).toString(),
+          value: totalMissed,
+          target: refMeasured.totalMissed,
+          barMax: castMax,
+          higherIsBetter: false,
+        },
+      );
     } else {
-      metrics.push({
-        label: 'Missed casts',
-        display: Math.round(totalMissed).toString(),
-        value: totalMissed,
-        higherIsBetter: false,
-      });
+      metrics.push(
+        {
+          label: 'Your missed casts/min',
+          display: missedPerMinute.toFixed(1),
+          value: missedPerMinute,
+          target: 2,
+          higherIsBetter: false,
+        },
+        {
+          label: 'Missed casts',
+          display: Math.round(totalMissed).toString(),
+          value: totalMissed,
+          higherIsBetter: false,
+        },
+      );
     }
 
     return [
@@ -181,6 +208,7 @@ export const cooldownCheck: Check = {
         severity,
         title: `About ${Math.round(totalMissed)} casts left on cooldown`,
         summary,
+        tip,
         detail:
           'This counts time where a skill had finished recharging but was not used. Holding a cooldown for a burst window or an incoming mechanic is legitimate, so read this as a list of candidates rather than a list of errors.',
         fix: refMeasured

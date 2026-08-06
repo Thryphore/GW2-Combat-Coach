@@ -33,7 +33,7 @@ export interface NormalizedCast {
   /** Animation duration in ms. */
   duration: number;
   endTime: number;
-  /** Positive: cancelled after firing. Negative: aborted, time wasted. */
+  /** Positive: aftercast cancel after activation. Negative: aborted before activation. */
   timeGained: number;
   quickness: number;
   isAutoAttack: boolean;
@@ -90,8 +90,21 @@ export interface NormalizedPlayer {
   firstAware: number;
   lastAware: number;
   activeTimeMs: number;
+  /**
+   * Target / boss DPS: sum of full-fight phase `dpsTargets` (matches EI Target DPS).
+   * Falls back to All when per-target stats are missing.
+   */
   dps: number;
+  /** Target / boss damage matching `dps`. */
   damage: number;
+  /** All-targets DPS from Elite Insights `dpsAll` (boss + adds). */
+  cleaveDps: number;
+  /** All-targets damage matching `cleaveDps`. */
+  cleaveDamage: number;
+  /** Highest 1-second damage across full-fight phase targets (falls back to cleave peak). */
+  peakDps: number;
+  /** Highest 1-second cleave / all-targets damage. */
+  peakCleaveDps: number;
   casts: NormalizedCast[];
   buffs: Map<number, StackTimeline>;
   weaponSets: NormalizedWeaponSet[];
@@ -121,6 +134,10 @@ export interface NormalizedPhase extends Interval {
 export interface NormalizedLog {
   source: LogSource;
   fightName: string;
+  /** Encounter icon from the report, when Elite Insights includes one. */
+  fightIcon?: string;
+  /** Elite Insights / Wingman boss species id when the report includes one. */
+  triggerId?: number;
   durationMs: number;
   success: boolean;
   isCM: boolean;
@@ -240,6 +257,167 @@ const DAMAGE_MODIFIER_SOURCE_LABEL: Record<DamageModifierSource, string> = {
 
 export function damageModifierSourceLabel(source: DamageModifierSource): string {
   return DAMAGE_MODIFIER_SOURCE_LABEL[source];
+}
+
+/** Show cleave beside single-target DPS when cleave is at least this much higher. */
+export const CLEAVE_DPS_DISPLAY_RATIO = 1.15;
+
+/** True when cleave is meaningfully above single-target DPS. */
+export function shouldShowCleaveDps(player: Pick<NormalizedPlayer, 'dps' | 'cleaveDps'>): boolean {
+  return player.dps > 0 && player.cleaveDps > player.dps * CLEAVE_DPS_DISPLAY_RATIO;
+}
+
+/**
+ * Fallback when the full-fight phase has no `targets` list: pick the single
+ * NPC that took the most damage from this player (not always index 0).
+ */
+export function primaryTargetIndex(
+  dpsTargets?: { dps?: number; damage?: number }[][],
+): number {
+  if (!dpsTargets?.length) return 0;
+  let bestIndex = 0;
+  let bestScore = -1;
+  for (let index = 0; index < dpsTargets.length; index += 1) {
+    const entry = dpsTargets[index]?.[0];
+    const score = entry?.damage ?? entry?.dps ?? 0;
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = index;
+    }
+  }
+  return bestIndex;
+}
+
+/** Full-fight phase target indices from Elite Insights (e.g. all void dragons on HT). */
+export function fightTargetIndices(log: { phases?: { targets?: number[] }[] }): number[] {
+  const targets = log.phases?.[0]?.targets;
+  if (!targets?.length) return [];
+  return targets.filter((index) => Number.isInteger(index) && index >= 0);
+}
+
+function resolveTargetIndices(
+  dpsTargets: { dps?: number; damage?: number }[][] | undefined,
+  targetIndices?: number[],
+): number[] {
+  if (targetIndices?.length) {
+    return targetIndices.filter(
+      (index) => Number.isInteger(index) && index >= 0 && index < (dpsTargets?.length ?? 0),
+    );
+  }
+  if (!dpsTargets?.length) return [];
+  return [primaryTargetIndex(dpsTargets)];
+}
+
+function sumTargetStats(
+  dpsTargets: { dps?: number; damage?: number }[][] | undefined,
+  indices: number[],
+): { dps: number; damage: number } {
+  let dps = 0;
+  let damage = 0;
+  for (const index of indices) {
+    const entry = dpsTargets?.[index]?.[0];
+    if (!entry) continue;
+    dps += entry.dps ?? 0;
+    damage += entry.damage ?? 0;
+  }
+  return { dps, damage };
+}
+
+/**
+ * Target / boss DPS sums `dpsTargets` for the full-fight phase target list
+ * (EI "Target" column). All DPS from `dpsAll`. Target cannot exceed All —
+ * if it does, the fields were swapped.
+ */
+export function resolvePlayerDps(
+  player: {
+    dpsAll?: { dps?: number; damage?: number }[];
+    dpsTargets?: { dps?: number; damage?: number }[][];
+  },
+  options?: { targetIndices?: number[] },
+): { dps: number; damage: number; cleaveDps: number; cleaveDamage: number } {
+  let cleaveDps = player.dpsAll?.[0]?.dps ?? 0;
+  let cleaveDamage = player.dpsAll?.[0]?.damage ?? 0;
+  const indices = resolveTargetIndices(player.dpsTargets, options?.targetIndices);
+  const summed = sumTargetStats(player.dpsTargets, indices);
+  let dps = indices.length ? summed.dps : cleaveDps;
+  let damage = indices.length ? summed.damage : cleaveDamage;
+  if (!indices.length || (dps <= 0 && damage <= 0)) {
+    dps = cleaveDps;
+    damage = cleaveDamage;
+  }
+
+  // Target ≤ All always. A higher "target" means source fields were inverted.
+  if (cleaveDps > 0 && dps > cleaveDps) {
+    [dps, cleaveDps] = [cleaveDps, dps];
+    [damage, cleaveDamage] = [cleaveDamage, damage];
+  }
+
+  return { dps, damage, cleaveDps, cleaveDamage };
+}
+
+/**
+ * Elite Insights `damage1S` / `targetDamage1S` are cumulative damage at each
+ * second. Peak 1s damage is the largest step between consecutive points.
+ */
+function peakFromCumulativeSeries(series: number[] | undefined): number {
+  if (!series?.length) return 0;
+  let peak = 0;
+  let previous = 0;
+  for (const point of series) {
+    if (!Number.isFinite(point)) continue;
+    const delta = point - previous;
+    if (delta > peak) peak = delta;
+    previous = point;
+  }
+  return peak;
+}
+
+/** Peak 1s damage of the summed cumulative series across several targets. */
+function peakFromSummedTargetSeries(
+  targetDamage1S: number[][][] | undefined,
+  indices: number[],
+): number {
+  const seriesList = indices
+    .map((index) => targetDamage1S?.[index]?.[0])
+    .filter((series): series is number[] => !!series?.length);
+  if (!seriesList.length) return 0;
+  if (seriesList.length === 1) return peakFromCumulativeSeries(seriesList[0]);
+
+  const length = Math.max(...seriesList.map((series) => series.length));
+  let peak = 0;
+  let previous = 0;
+  for (let t = 0; t < length; t += 1) {
+    let sum = 0;
+    for (const series of seriesList) {
+      const point = t < series.length ? series[t]! : series[series.length - 1]!;
+      if (Number.isFinite(point)) sum += point;
+    }
+    const delta = sum - previous;
+    if (delta > peak) peak = delta;
+    previous = sum;
+  }
+  return peak;
+}
+
+/**
+ * Highest 1-second damage windows across full-fight phase targets, plus cleave
+ * from `damage1S`. Falls back to cleave when per-target data is missing.
+ */
+export function resolvePeakDps(
+  player: {
+    damage1S?: number[][];
+    targetDamage1S?: number[][][];
+    dpsTargets?: { dps?: number; damage?: number }[][];
+  },
+  options?: { targetIndices?: number[] },
+): { peakDps: number; peakCleaveDps: number } {
+  const peakCleaveDps = peakFromCumulativeSeries(player.damage1S?.[0]);
+  const indices = resolveTargetIndices(player.dpsTargets, options?.targetIndices);
+  const targetPeak = peakFromSummedTargetSeries(player.targetDamage1S, indices);
+  return {
+    peakDps: targetPeak > 0 ? targetPeak : peakCleaveDps,
+    peakCleaveDps,
+  };
 }
 
 /** "Utility · Writ of Masterful Malice" */
@@ -387,6 +565,9 @@ function normalizePlayer(
   const stats = player.statsAll?.[0];
   const defenses = player.defenses?.[0];
   const buffGeneration = mergeBuffGeneration(player.squadBuffs, player.groupBuffs);
+  const targetIndices = fightTargetIndices(log);
+  const { dps, damage, cleaveDps, cleaveDamage } = resolvePlayerDps(player, { targetIndices });
+  const { peakDps, peakCleaveDps } = resolvePeakDps(player, { targetIndices });
 
   return {
     name: player.name ?? 'Unknown',
@@ -396,8 +577,12 @@ function normalizePlayer(
     firstAware: player.firstAware ?? 0,
     lastAware: player.lastAware ?? fightEnd,
     activeTimeMs: player.activeTimes?.[0] ?? fightEnd,
-    dps: player.dpsAll?.[0]?.dps ?? 0,
-    damage: player.dpsAll?.[0]?.damage ?? 0,
+    dps,
+    damage,
+    cleaveDps,
+    cleaveDamage,
+    peakDps,
+    peakCleaveDps,
     casts,
     buffs,
     weaponSets: normalizeWeaponSets(player, fightEnd),
@@ -454,6 +639,8 @@ export function normalizeLog(raw: EILog, source: LogSource): NormalizedLog {
   return {
     source,
     fightName: raw.fightName ?? raw.name ?? 'Unknown encounter',
+    fightIcon: resolveEiIcon(raw.icon ?? raw.fightIcon),
+    triggerId: typeof raw.triggerID === 'number' && raw.triggerID > 0 ? raw.triggerID : undefined,
     durationMs,
     success: raw.success === true,
     isCM: raw.isCM === true,

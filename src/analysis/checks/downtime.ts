@@ -46,6 +46,9 @@ export function measureIdleTime(player: NormalizedPlayer, window: Interval): Idl
   return { spanMs, idleMs, share: idleMs / spanMs, gaps };
 }
 
+/** Summary used when idle share is within 2pp of the reference — safe to hide in the main list. */
+export const IDLE_NORMAL_SUMMARY = 'Idle time looks normal for this encounter.';
+
 export const downtimeCheck: Check = {
   id: 'downtime',
   name: 'Downtime',
@@ -68,41 +71,63 @@ export const downtimeCheck: Check = {
     }
 
     const ranked = [...gaps].sort((a, b) => b.end - b.start - (a.end - a.start));
+    const longest = `${duration(ranked[0].end - ranked[0].start)} at ${timestamp(ranked[0].start)}`;
+    const facts = `${percent(share, 1)} of your time in this fight had no skill going out, spread over ${count(gaps.length, 'gap')}. The longest was ${longest}.`;
 
-    let summary = `${percent(share, 1)} of your time in this fight had no skill going out, spread over ${count(gaps.length, 'gap')}. The longest was ${duration(ranked[0].end - ranked[0].start)} at ${timestamp(ranked[0].start)}.`;
+    let summary: string;
+    let tip: string;
     if (refMeasured) {
       const delta = share - refMeasured.share;
       if (delta <= 0.02) {
-        summary += ` The reference idled ${percent(refMeasured.share, 1)} (${duration(refMeasured.idleMs)}) — for this encounter that amount of not attacking looks normal.`;
+        summary = IDLE_NORMAL_SUMMARY;
+        tip = `${facts} The reference idled ${percent(refMeasured.share, 1)} (${duration(refMeasured.idleMs)}) — for this encounter that amount of not attacking looks normal.`;
       } else {
-        summary += ` The reference only idled ${percent(refMeasured.share, 1)} (${duration(refMeasured.idleMs)}), so ${percent(delta, 1)} of your silence is unlikely to be just phase transitions.`;
+        summary = `${percent(delta, 1)} more idle than the reference — unlikely to be just phase transitions.`;
+        tip = `${facts} The reference only idled ${percent(refMeasured.share, 1)} (${duration(refMeasured.idleMs)}).`;
       }
+    } else {
+      summary = `${percent(share, 1)} of the fight had no skill going out.`;
+      tip = facts;
     }
 
-    const metrics: Metric[] = [
-      {
-        label: 'Your idle time',
-        display: `${duration(idleMs)} (${percent(share, 1)})`,
-        value: share * 100,
-        target: refMeasured ? refMeasured.share * 100 : 5,
-        higherIsBetter: false,
-      },
-    ];
+    const metrics: Metric[] = [];
     if (refMeasured) {
-      metrics.push({
-        label: 'Reference idle time',
-        display: `${duration(refMeasured.idleMs)} (${percent(refMeasured.share, 1)})`,
-        value: refMeasured.share * 100,
-        higherIsBetter: false,
-      });
+      const barMax = Math.max(share, refMeasured.share, 0.01) * 100;
+      metrics.push(
+        {
+          label: 'Your idle time',
+          display: `${duration(idleMs)} (${percent(share, 1)})`,
+          value: share * 100,
+          target: refMeasured.share * 100,
+          barMax,
+          higherIsBetter: false,
+        },
+        {
+          label: 'Reference idle time',
+          display: `${duration(refMeasured.idleMs)} (${percent(refMeasured.share, 1)})`,
+          value: refMeasured.share * 100,
+          target: refMeasured.share * 100,
+          barMax,
+          higherIsBetter: false,
+        },
+      );
     } else {
-      metrics.push({
-        label: 'Share of fight',
-        display: percent(share, 1),
-        value: share * 100,
-        target: 5,
-        higherIsBetter: false,
-      });
+      metrics.push(
+        {
+          label: 'Your idle time',
+          display: `${duration(idleMs)} (${percent(share, 1)})`,
+          value: share * 100,
+          target: 5,
+          higherIsBetter: false,
+        },
+        {
+          label: 'Share of fight',
+          display: percent(share, 1),
+          value: share * 100,
+          target: 5,
+          higherIsBetter: false,
+        },
+      );
     }
 
     return [
@@ -112,6 +137,7 @@ export const downtimeCheck: Check = {
         severity,
         title: `${duration(idleMs)} with nothing being cast`,
         summary,
+        tip,
         detail:
           'Some downtime is unavoidable: phase transitions, mechanics that push you out, and running between targets all show up here. The goal is to shrink the gaps you control by filling them with auto-attacks.',
         fix: refMeasured
