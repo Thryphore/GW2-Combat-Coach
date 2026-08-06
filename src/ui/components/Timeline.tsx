@@ -3,7 +3,7 @@ import { boonsForRole } from '../../analysis/boonRole.ts';
 import { timestamp } from '../../analysis/format.ts';
 import type { InferredBuild, ReferenceBuild } from '../../model/build.ts';
 import { findBladeBuffId, findBuffId, type NormalizedLog, type NormalizedPlayer } from '../../model/normalize.ts';
-import { skillKeybind } from '../skillKeybind.ts';
+import { useResolveKeybind } from '../settings/SettingsContext.tsx';
 import { SkillTipContent } from './Gw2Tip.tsx';
 import { HoverTooltip } from './HoverTooltip.tsx';
 
@@ -13,26 +13,25 @@ interface Props {
   referenceBuild?: ReferenceBuild;
   build?: InferredBuild;
   skills?: SkillIndex;
+  /** When true, omit the outer card chrome (e.g. nested under the summary). */
+  embedded?: boolean;
 }
 
-function castKeybind(
-  skillId: number,
-  skills: SkillIndex | undefined,
-  build: InferredBuild | undefined,
-): string | undefined {
-  const info = skills?.skill(skillId);
-  if (!info?.slot) return undefined;
-  if (info.slot === 'Utility' && build) {
-    const index = build.utilities.findIndex((entry) => entry.id === skillId);
-    return skillKeybind(info.slot, index >= 0 ? index : undefined);
-  }
-  return skillKeybind(info.slot);
-}
-
-export function Timeline({ log, player, referenceBuild, build, skills }: Props) {
+export function Timeline({ log, player, referenceBuild, build, skills, embedded = false }: Props) {
+  const resolveKeybind = useResolveKeybind();
   const span = Math.max(1, log.fullFight.end - log.fullFight.start);
   const toPercent = (ms: number) => ((ms - log.fullFight.start) / span) * 100;
   const trackedBoons = boonsForRole(log, player, referenceBuild);
+
+  const castKeybind = (skillId: number): string | undefined => {
+    const info = skills?.skill(skillId);
+    if (!info?.slot) return undefined;
+    if (info.slot === 'Utility' && build) {
+      const index = build.utilities.findIndex((entry) => entry.id === skillId);
+      return resolveKeybind(info.slot, index >= 0 ? index : undefined);
+    }
+    return resolveKeybind(info.slot);
+  };
 
   const rows = trackedBoons
     .map((name) => {
@@ -57,11 +56,13 @@ export function Timeline({ log, player, referenceBuild, build, skills }: Props) 
 
   const ticks = Array.from({ length: 6 }, (_, index) => (span / 5) * index);
 
-  return (
-    <section className="rounded-2xl border border-ink-700 bg-ink-850/70 p-5">
-      <h2 className="text-sm font-semibold tracking-wide text-ink-400 uppercase">Fight timeline</h2>
+  const body = (
+    <>
+      {!embedded && (
+        <h2 className="text-sm font-semibold tracking-wide text-ink-400 uppercase">Fight timeline</h2>
+      )}
 
-      <div className="mt-4 space-y-3">
+      <div className={embedded ? 'space-y-3' : 'mt-4 space-y-3'}>
         {bladeSegments.length > 0 && (
           <div className="flex items-center gap-3">
             <span className="w-20 shrink-0 text-xs text-ink-400">Blades</span>
@@ -113,7 +114,7 @@ export function Timeline({ log, player, referenceBuild, build, skills }: Props) 
           <div className="relative h-6 flex-1 overflow-hidden rounded-md bg-ink-800">
             {player.casts.map((cast, index) => {
               const info = skills?.skill(cast.skillId);
-              const keybind = castKeybind(cast.skillId, skills, build);
+              const keybind = castKeybind(cast.skillId);
               const chain = skills?.chainPosition(cast.skillId);
               const cancelled = cast.timeGained < 0;
               const tip = info ? (
@@ -167,11 +168,17 @@ export function Timeline({ log, player, referenceBuild, build, skills }: Props) 
         </div>
       </div>
 
-      <p className="mt-4 text-xs text-ink-400">
+      <p className={`${embedded ? 'mt-3' : 'mt-4'} text-xs text-ink-400`}>
         Green ticks are skills, grey ticks are auto-attacks, red ticks are casts that were cancelled before they fired.
         Blades height and brightness show stack count (average on the right). Alacrity and Quickness only appear here for
         support roles. Hover a cast for skill details.
       </p>
-    </section>
+    </>
   );
+
+  if (embedded) {
+    return <div className="mt-5 border-t border-ink-700 pt-4">{body}</div>;
+  }
+
+  return <section className="rounded-2xl border border-ink-700 bg-ink-850/70 p-5">{body}</section>;
 }

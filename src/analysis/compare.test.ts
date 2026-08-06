@@ -22,6 +22,10 @@ function basePlayer(name: string, fightEndMs: number, casts: NormalizedCast[]): 
     activeTimeMs: fightEndMs,
     dps: 20_000,
     damage: 20_000 * (fightEndMs / 1000),
+    cleaveDps: 20_000,
+    cleaveDamage: 20_000 * (fightEndMs / 1000),
+    peakDps: 0,
+    peakCleaveDps: 0,
     casts,
     buffs: new Map(),
     buffGeneration: new Map(),
@@ -114,9 +118,10 @@ describe('downtime and cooldown cards show the reference', () => {
     })[0];
 
     expect(finding?.id).toBe('downtime/idle');
-    expect(finding?.summary).toMatch(/reference/i);
+    expect(finding?.summary + (finding?.tip ?? '')).toMatch(/reference/i);
     expect(finding?.metrics?.some((metric) => metric.label === 'Reference idle time')).toBe(true);
     expect(finding?.metrics?.some((metric) => metric.label === 'Your idle time')).toBe(true);
+    expect(finding?.metrics?.every((metric) => metric.barMax && metric.barMax > 0)).toBe(true);
   });
 
   it('puts reference missed casts on the cooldown finding', () => {
@@ -148,7 +153,7 @@ describe('downtime and cooldown cards show the reference', () => {
     })[0];
 
     expect(finding?.id).toBe('cooldowns/held');
-    expect(finding?.summary).toMatch(/reference/i);
+    expect(finding?.summary + (finding?.tip ?? '')).toMatch(/reference/i);
     expect(finding?.metrics?.some((metric) => metric.label === 'Reference missed casts/min')).toBe(true);
     expect(finding?.metrics?.some((metric) => metric.label === 'Your missed casts/min')).toBe(true);
   });

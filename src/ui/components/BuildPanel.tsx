@@ -1,20 +1,12 @@
+import { useState, type FormEvent } from 'react';
 import type { SkillIndex } from '../../api/gw2.ts';
-import type { RaidBuildCandidate } from '../../api/metabattle.ts';
+import { metaBattlePageFromInput, type RaidBuildCandidate } from '../../api/metabattle.ts';
 import type { BuildSkillRef, BuildTraitRef, InferredBuild, ReferenceBuild } from '../../model/build.ts';
 import type { ConsumableKind, NormalizedConsumable } from '../../model/normalize.ts';
-import { skillKeybind } from '../skillKeybind.ts';
+import { useResolveKeybind } from '../settings/SettingsContext.tsx';
+import { CollapsiblePanel } from './CollapsiblePanel.tsx';
 import { ConsumableTipContent, Gw2NameChip, SkillTipContent, TraitTipContent } from './Gw2Tip.tsx';
 import { HoverTooltip } from './HoverTooltip.tsx';
-
-function resolveSkillKeybind(skill: BuildSkillRef, utilities: BuildSkillRef[]): string | undefined {
-  if (skill.slot === 'Utility') {
-    const index = utilities.findIndex(
-      (entry) => (skill.id !== undefined && entry.id === skill.id) || entry.name === skill.name,
-    );
-    return skillKeybind(skill.slot, index >= 0 ? index : undefined);
-  }
-  return skillKeybind(skill.slot);
-}
 
 function SkillChip({
   skill,
@@ -25,11 +17,17 @@ function SkillChip({
   skills?: SkillIndex;
   utilities: BuildSkillRef[];
 }) {
+  const resolveKeybind = useResolveKeybind();
   const info = skill.id !== undefined ? skills?.skill(skill.id) : skills?.skillByName(skill.name);
-  const keybind = resolveSkillKeybind(
-    { ...skill, slot: skill.slot ?? info?.slot },
-    utilities,
-  );
+  const slot = skill.slot ?? info?.slot;
+  let utilityIndex: number | undefined;
+  if (slot === 'Utility') {
+    const index = utilities.findIndex(
+      (entry) => (skill.id !== undefined && entry.id === skill.id) || entry.name === skill.name,
+    );
+    utilityIndex = index >= 0 ? index : undefined;
+  }
+  const keybind = resolveKeybind(slot, utilityIndex);
   const chain = skill.id !== undefined ? skills?.chainPosition(skill.id) : undefined;
 
   const tip =
@@ -181,16 +179,19 @@ export function BuildPanel({
   const referenceUtilities = reference?.utilities ?? [];
 
   return (
-    <section className="grid gap-4 md:grid-cols-2">
+    <section className="grid grid-cols-2 items-start gap-4">
       {build && (
-        <div className="rounded-2xl border border-ink-700 bg-ink-850/70 p-5">
-          <h2 className="text-sm font-semibold tracking-wide text-ink-400 uppercase">Observed in your log</h2>
-          <p className="mt-1 text-xs text-ink-400">
-            {build.profession}
-            {build.specializations.length > 0 && ` · ${build.specializations.join(', ')}`}
-          </p>
-
-          <div className="mt-4 space-y-3">
+        <CollapsiblePanel
+          className="min-w-0"
+          title="Observed in your log"
+          blurb={
+            <p className="text-xs text-ink-400">
+              {build.profession}
+              {build.specializations.length > 0 && ` · ${build.specializations.join(', ')}`}
+            </p>
+          }
+        >
+          <div className="space-y-3">
             {build.weaponSets.length > 0 && (
               <div>
                 <div className="text-xs tracking-wide text-ink-400 uppercase">Weapons</div>
@@ -233,105 +234,171 @@ export function BuildPanel({
                 </div>
               </div>
             )}
+            {build.notes.length > 0 && (
+              <ul className="space-y-1 text-xs text-ink-400">
+                {build.notes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            )}
           </div>
-
-          {build.notes.length > 0 && (
-            <ul className="mt-4 space-y-1 text-xs text-ink-400">
-              {build.notes.map((note) => (
-                <li key={note}>{note}</li>
-              ))}
-            </ul>
-          )}
-        </div>
+        </CollapsiblePanel>
       )}
 
       {reference && (
-        <div className="rounded-2xl border border-ink-700 bg-ink-850/70 p-5">
-          <h2 className="text-sm font-semibold tracking-wide text-ink-400 uppercase">
-            Auto-chosen MetaBattle raid build
-          </h2>
-          <p className="mt-1 text-xs text-ink-400">
-            {reference.url ? (
-              <a href={reference.url} target="_blank" rel="noreferrer" className="text-brand-400 hover:underline">
+        <CollapsiblePanel
+          className="min-w-0"
+          title="Auto-chosen MetaBattle raid build"
+          blurb={
+            <>
+              <p className="text-xs text-ink-400">
                 {reference.name}
-              </a>
-            ) : (
-              reference.name
-            )}
-            {reference.weapons.length > 0 && ` · ${reference.weapons.join(' / ')}`}
-          </p>
-          <p className="mt-1 text-xs text-ink-500">
-            Picked from MetaBattle&apos;s raid builds for {reference.eliteSpec ?? build?.profession}. Open-world and
-            PvP pages are ignored.
-          </p>
-
-          <div className="mt-4 space-y-3">
-            <SkillRow
-              label="Weapon skills"
-              skills={reference.weaponSkills ?? []}
-              skillIndex={skills}
-              utilities={referenceUtilities}
-            />
-            <SkillRow
-              label="Profession skills"
-              skills={reference.professionSkills ?? []}
-              skillIndex={skills}
-              utilities={referenceUtilities}
-            />
-            <SkillRow
-              label="Heal / utility / elite"
-              skills={[reference.heal, ...reference.utilities, reference.elite].filter(Boolean) as BuildSkillRef[]}
-              skillIndex={skills}
-              utilities={referenceUtilities}
-            />
-            {reference.specializations.map((spec) => (
-              <div key={spec.name}>
-                <div className="text-xs tracking-wide text-ink-400 uppercase">{spec.name}</div>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {spec.traits.map((trait) => (
-                    <TraitChip key={trait.name} trait={trait} skills={skills} />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {alternatives.length > 0 && (
-            <div className="mt-4 border-t border-ink-800 pt-3">
-              <div className="text-xs tracking-wide text-ink-400 uppercase">Other raid builds</div>
-              <p className="mt-1 text-xs text-ink-500">
-                If the automatic pick looks wrong, switch to another raid page for this specialization.
+                {reference.weapons.length > 0 && ` · ${reference.weapons.join(' / ')}`}
               </p>
-              <ul className="mt-2 space-y-1.5">
-                {alternatives.map((candidate) => (
-                  <li key={candidate.page} className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="text-ink-200">{candidate.variant}</span>
-                    {onSelectAlternative ? (
-                      <button
-                        type="button"
-                        onClick={() => onSelectAlternative(candidate.page)}
-                        className="text-xs font-medium text-brand-400 hover:underline"
-                      >
-                        Use this
-                      </button>
-                    ) : null}
-                    <a
-                      href={`https://metabattle.com/wiki/${encodeURIComponent(candidate.page.replace(/ /g, '_'))}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-ink-500 hover:text-brand-400 hover:underline"
-                    >
-                      MetaBattle
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+              <p className="mt-1 text-xs text-ink-500">
+                Picked from MetaBattle&apos;s raid builds for {reference.eliteSpec ?? build?.profession}.
+              </p>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            {reference.url && (
+              <a
+                href={reference.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-block text-sm text-brand-400 hover:underline"
+              >
+                Open on MetaBattle
+              </a>
+            )}
 
-          {reference.attribution && <p className="mt-4 text-xs text-ink-400">{reference.attribution}</p>}
-        </div>
+            <div className="space-y-3">
+              <SkillRow
+                label="Weapon skills"
+                skills={reference.weaponSkills ?? []}
+                skillIndex={skills}
+                utilities={referenceUtilities}
+              />
+              <SkillRow
+                label="Profession skills"
+                skills={reference.professionSkills ?? []}
+                skillIndex={skills}
+                utilities={referenceUtilities}
+              />
+              <SkillRow
+                label="Heal / utility / elite"
+                skills={
+                  [reference.heal, ...reference.utilities, reference.elite].filter(Boolean) as BuildSkillRef[]
+                }
+                skillIndex={skills}
+                utilities={referenceUtilities}
+              />
+              {reference.specializations.map((spec) => (
+                <div key={spec.name}>
+                  <div className="text-xs tracking-wide text-ink-400 uppercase">{spec.name}</div>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {spec.traits.map((trait) => (
+                      <TraitChip key={trait.name} trait={trait} skills={skills} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {onSelectAlternative && (
+              <ReferenceBuildPicker alternatives={alternatives} onSelect={onSelectAlternative} />
+            )}
+
+            {reference.attribution && <p className="text-xs text-ink-400">{reference.attribution}</p>}
+          </div>
+        </CollapsiblePanel>
       )}
     </section>
+  );
+}
+
+function ReferenceBuildPicker({
+  alternatives,
+  onSelect,
+}: {
+  alternatives: RaidBuildCandidate[];
+  onSelect: (page: string) => void;
+}) {
+  const [linkInput, setLinkInput] = useState('');
+  const [linkError, setLinkError] = useState<string | undefined>();
+
+  const onSubmitLink = (event: FormEvent) => {
+    event.preventDefault();
+    const page = metaBattlePageFromInput(linkInput);
+    if (!page) {
+      setLinkError('Paste a MetaBattle build URL, like https://metabattle.com/wiki/Build:…');
+      return;
+    }
+    setLinkError(undefined);
+    onSelect(page);
+  };
+
+  return (
+    <div className="space-y-3 border-t border-ink-800 pt-3">
+      <div>
+        <div className="text-xs tracking-wide text-ink-400 uppercase">Choose a different build</div>
+        <p className="mt-1 text-xs text-ink-500">Paste a MetaBattle link, or pick another raid page.</p>
+      </div>
+
+      <form onSubmit={onSubmitLink} className="space-y-2">
+        <label className="block text-xs tracking-wide text-ink-400 uppercase" htmlFor="metabattle-build-link">
+          MetaBattle link
+        </label>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            id="metabattle-build-link"
+            type="text"
+            value={linkInput}
+            onChange={(event) => {
+              setLinkInput(event.target.value);
+              if (linkError) setLinkError(undefined);
+            }}
+            placeholder="https://metabattle.com/wiki/Build:…"
+            className="min-w-0 flex-1 rounded-lg border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-ink-200 placeholder:text-ink-600 focus:border-brand-400 focus:outline-none"
+          />
+          <button
+            type="submit"
+            className="shrink-0 rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-400"
+          >
+            Use link
+          </button>
+        </div>
+        {linkError && <p className="text-xs text-crit-500">{linkError}</p>}
+      </form>
+
+      {alternatives.length > 0 && (
+        <div>
+          <div className="text-xs tracking-wide text-ink-400 uppercase">Other raid builds</div>
+          <ul className="mt-2 space-y-1.5">
+            {alternatives.map((candidate) => (
+              <li key={candidate.page} className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-ink-200">{candidate.variant}</span>
+                <button
+                  type="button"
+                  onClick={() => onSelect(candidate.page)}
+                  className="text-xs font-medium text-brand-400 hover:underline"
+                >
+                  Use this
+                </button>
+                <a
+                  href={`https://metabattle.com/wiki/${encodeURIComponent(candidate.page.replace(/ /g, '_'))}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-ink-500 hover:text-brand-400 hover:underline"
+                >
+                  MetaBattle
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }

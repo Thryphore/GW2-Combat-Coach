@@ -300,7 +300,9 @@ export async function listRaidBuildCandidates(
 
 /**
  * Picks a MetaBattle raid build for the player's elite specialization.
- * Only pages in Category:Raid builds are considered — open world and PvP are excluded.
+ * Only pages in Category:Raid builds are considered for the automatic pick —
+ * open-world and PvP are excluded. A preferred page (from a pasted link or an
+ * alternatives click) is loaded directly even when it is outside that shortlist.
  */
 export async function autoSelectRaidReference(
   eliteSpec: string,
@@ -311,16 +313,31 @@ export async function autoSelectRaidReference(
 ): Promise<AutoReferenceResult> {
   const focus = inferDamageFocus(player);
   const candidates = await listRaidBuildCandidates(eliteSpec, { focus, preferSupport });
+
+  if (preferredPage?.trim()) {
+    const page = preferredPage.trim();
+    const parsed = await fetchMetaBattleBuild(page, skills);
+    if (!parsed.build.eliteSpec) {
+      parsed.build.eliteSpec =
+        candidates.find((candidate) => candidate.page.toLowerCase() === page.toLowerCase())?.eliteSpec ??
+        eliteSpec;
+    }
+    return {
+      chosen: parsed.build,
+      alternatives: candidates
+        .filter((candidate) => candidate.page.toLowerCase() !== page.toLowerCase())
+        .slice(0, 4),
+      candidates,
+    };
+  }
+
   if (candidates.length === 0) {
     throw new MetaBattleError(
       `No MetaBattle raid builds were found for ${eliteSpec}. Open-world and PvP pages are ignored.`,
     );
   }
 
-  const preferred = preferredPage
-    ? candidates.find((candidate) => candidate.page.toLowerCase() === preferredPage.toLowerCase())
-    : undefined;
-  const chosenCandidate = preferred ?? candidates[0];
+  const chosenCandidate = candidates[0];
   const parsed = await fetchMetaBattleBuild(chosenCandidate.page, skills);
   if (!parsed.build.eliteSpec) parsed.build.eliteSpec = chosenCandidate.eliteSpec;
 

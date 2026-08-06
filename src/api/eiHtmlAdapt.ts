@@ -7,8 +7,9 @@
  *   0 UNKNOWN, 1 REDUCED, 2 CANCEL/Interrupted, 3 FULL, 4 INSTANT
  *
  * Interrupted casts reconstruct timeGained exactly (-actualDuration). Reduced
- * (aftercast cancel) casts only get a positive sentinel — the HTML schema omits
- * SavedDuration — while aggregate timeSaved still comes from gameplayStats.
+ * (aftercast cancel) casts omit SavedDuration in the HTML schema, so we estimate
+ * from full casts of the same skill when possible, then scale the positives to
+ * match gameplayStats.timeSaved (EI's authoritative aggregate).
  */
 
 import type {
@@ -19,6 +20,7 @@ import type {
   EIDamageModDesc,
   EIDamageModifierData,
   EIDamageDist,
+  EIDps,
   EILog,
   EIPhase,
   EIPlayer,
@@ -64,6 +66,70 @@ function secToMs(seconds: number): number {
   return Math.round(seconds * 1000);
 }
 
+/** HTML DPSStatDataItem: [damage, powerDamage, conditionDamage, breakbarDamage]. */
+function dpsFromHtmlRow(row: unknown[], activeTimeMs: number): EIDps {
+  const damage = asNumber(row[0]);
+  const powerDamage = asNumber(row[1]);
+  const condiDamage = asNumber(row[2]);
+  const dps = activeTimeMs > 0 ? Math.round((damage * 1000) / activeTimeMs) : 0;
+  return {
+    dps,
+    damage,
+    powerDamage,
+    condiDamage,
+    powerDps: activeTimeMs > 0 ? Math.round((powerDamage * 1000) / activeTimeMs) : 0,
+    condiDps: activeTimeMs > 0 ? Math.round((condiDamage * 1000) / activeTimeMs) : 0,
+  };
+}
+
+/**
+ * Build EI-shaped `dpsTargets[target][phase]` from HTML `dpsStatsTargets`.
+ * EI templates use `[player][target]`; if the outer length does not match the
+ * player count but each inner list does, treat it as `[target][player]`.
+ */
+function adaptHtmlDpsTargets(
+  raw: unknown,
+  playerIndex: number,
+  playerCount: number,
+  activeTimeMs: number,
+  allDamage: number,
+): EIDps[][] | undefined {
+  const root = asArray(raw);
+  if (root.length === 0 || playerCount <= 0) return undefined;
+
+  const fromPlayerMajor = (): EIDps[][] | undefined => {
+    const perTarget = asArray(root[playerIndex]).filter(Array.isArray) as unknown[][];
+    if (perTarget.length === 0) return undefined;
+    return perTarget.map((row) => [dpsFromHtmlRow(row, activeTimeMs)]);
+  };
+
+  const fromTargetMajor = (): EIDps[][] | undefined => {
+    const out: EIDps[][] = [];
+    for (const targetPlayers of root) {
+      if (!Array.isArray(targetPlayers)) continue;
+      const row = targetPlayers[playerIndex];
+      if (!Array.isArray(row)) continue;
+      out.push([dpsFromHtmlRow(row, activeTimeMs)]);
+    }
+    return out.length > 0 ? out : undefined;
+  };
+
+  const firstInnerLen = Array.isArray(root[0]) ? root[0].length : 0;
+  // Outer length == players → standard EI HTML layout.
+  if (root.length === playerCount) return fromPlayerMajor();
+  // Inner length == players → transposed [target][player].
+  if (firstInnerLen === playerCount) return fromTargetMajor();
+
+  // Ambiguous shape: keep whichever keeps Target damage ≤ All damage.
+  const preferred = fromPlayerMajor();
+  const preferredBoss = preferred?.[0]?.[0]?.damage ?? 0;
+  if (preferred && (allDamage <= 0 || preferredBoss <= allDamage * 1.001)) return preferred;
+  const transposed = fromTargetMajor();
+  const transposedBoss = transposed?.[0]?.[0]?.damage ?? 0;
+  if (transposed && (allDamage <= 0 || transposedBoss <= allDamage * 1.001)) return transposed;
+  return preferred ?? transposed;
+}
+
 /** True when the payload looks like EI's HTML-report schema rather than full JSON. */
 export function isEiHtmlReport(raw: unknown): boolean {
   if (!isRecord(raw)) return false;
@@ -77,6 +143,85 @@ function timeGainedFromStatus(status: number, actualDuration: number): number {
   if (status === RotationStatus.CANCEL) return -Math.abs(actualDuration);
   if (status === RotationStatus.REDUCED) return REDUCED_TIME_GAINED_SENTINEL;
   return 0;
+}
+
+interface InterimCast {
+  skillId: number;
+  castTime: number;
+  duration: number;
+  status: number;
+  acceleration: number;
+}
+
+function parseInterimCasts(phaseCasts: unknown): InterimCast[] {
+  const out: InterimCast[] = [];
+  for (const entry of asArray(phaseCasts)) {
+    if (!Array.isArray(entry) || entry.length < 4) continue;
+    out.push({
+      skillId: asNumber(entry[1]),
+      castTime: secToMs(asNumber(entry[0])),
+      duration: asNumber(entry[2]),
+      status: asNumber(entry[3]),
+      acceleration: asNumber(entry[4], 0),
+    });
+  }
+  return out;
+}
+
+/** Bucket acceleration so quickness FULL casts do not inflate non-quickness saves. */
+function accelerationBucket(acceleration: number): 'quick' | 'slow' | 'normal' {
+  if (acceleration >= 0.5) return 'quick';
+  if (acceleration <= -0.5) return 'slow';
+  return 'normal';
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)] ?? 0;
+}
+
+/** Expected animation length for a REDUCED cast, from FULL casts of the same skill. */
+function expectedDurationFromFullCasts(
+  fullCasts: InterimCast[],
+  skillId: number,
+  acceleration: number,
+): number | undefined {
+  const sameSkill = fullCasts.filter((cast) => cast.skillId === skillId && cast.duration > 0);
+  if (sameSkill.length === 0) return undefined;
+  const bucket = accelerationBucket(acceleration);
+  const matched = sameSkill.filter((cast) => accelerationBucket(cast.acceleration) === bucket);
+  const pool = matched.length > 0 ? matched : sameSkill;
+  return median(pool.map((cast) => cast.duration));
+}
+
+/**
+ * HTML reports omit per-cast SavedDuration. Weight REDUCED casts by estimated
+ * save, then force the total to match EI's aggregate timeSaved.
+ */
+function reconcileReducedTimeGained(
+  casts: Array<{ timeGained: number }>,
+  timeSavedSec: number,
+): void {
+  const reduced = casts.filter((cast) => cast.timeGained > 0);
+  if (reduced.length === 0) return;
+
+  const targetMs = Math.max(0, Math.round(timeSavedSec * 1000));
+  if (targetMs <= 0) {
+    for (const cast of reduced) cast.timeGained = 0;
+    return;
+  }
+
+  const weightSum = reduced.reduce((total, cast) => total + Math.max(cast.timeGained, 0), 0);
+  const weights =
+    weightSum > 0 ? reduced.map((cast) => Math.max(cast.timeGained, 0)) : reduced.map(() => 1);
+  const totalWeight = weights.reduce((total, weight) => total + weight, 0);
+  const floors = weights.map((weight) => Math.floor((weight / totalWeight) * targetMs));
+  let remainder = targetMs - floors.reduce((total, value) => total + value, 0);
+  for (let index = 0; index < reduced.length; index += 1) {
+    const extra = remainder > 0 ? 1 : 0;
+    if (remainder > 0) remainder -= 1;
+    reduced[index].timeGained = floors[index] + extra;
+  }
 }
 
 function adaptSkillMap(raw: unknown): Record<string, EISkillDesc> {
@@ -187,25 +332,34 @@ function adaptPersonalBuffs(raw: unknown): Record<string, number[]> {
   return out;
 }
 
-function adaptRotation(phaseCasts: unknown): EIRotation[] {
+function adaptRotation(phaseCasts: unknown, timeSavedSec = 0): EIRotation[] {
+  const interim = parseInterimCasts(phaseCasts);
+  const fullCasts = interim.filter((cast) => cast.status === RotationStatus.FULL);
   const bySkill = new Map<number, NonNullable<EIRotation['skills']>>();
-  for (const entry of asArray(phaseCasts)) {
-    if (!Array.isArray(entry) || entry.length < 4) continue;
-    const startSec = asNumber(entry[0]);
-    const skillId = asNumber(entry[1]);
-    const actualDuration = asNumber(entry[2]);
-    const status = asNumber(entry[3]);
-    const acceleration = asNumber(entry[4], 0);
-    const instant = status === RotationStatus.INSTANT;
-    const skills = bySkill.get(skillId) ?? [];
-    skills.push({
-      castTime: secToMs(startSec),
-      duration: instant ? 0 : actualDuration,
-      timeGained: timeGainedFromStatus(status, actualDuration),
-      quickness: acceleration,
-    });
-    bySkill.set(skillId, skills);
+  const adaptedCasts: NonNullable<EIRotation['skills']> = [];
+
+  for (const cast of interim) {
+    const instant = cast.status === RotationStatus.INSTANT;
+    let timeGained = timeGainedFromStatus(cast.status, cast.duration);
+    if (cast.status === RotationStatus.REDUCED) {
+      const expected = expectedDurationFromFullCasts(fullCasts, cast.skillId, cast.acceleration);
+      if (expected !== undefined && expected > cast.duration) {
+        timeGained = expected - cast.duration;
+      }
+    }
+    const skills = bySkill.get(cast.skillId) ?? [];
+    const adapted = {
+      castTime: cast.castTime,
+      duration: instant ? 0 : cast.duration,
+      timeGained,
+      quickness: cast.acceleration,
+    };
+    skills.push(adapted);
+    adaptedCasts.push(adapted);
+    bySkill.set(cast.skillId, skills);
   }
+
+  reconcileReducedTimeGained(adaptedCasts, timeSavedSec);
   return [...bySkill.entries()].map(([id, skills]) => ({ id, skills }));
 }
 
@@ -372,14 +526,25 @@ function adaptPlayer(
   const details = isRecord(rawPlayer.details) ? rawPlayer.details : {};
   const profession = asString(rawPlayer.profession, 'Unknown');
 
-  const dpsRow = phase0 ? asArray(phase0.dpsStats)[playerIndex] : undefined;
-  const gameplayRow = phase0 ? asArray(phase0.gameplayStats)[playerIndex] : undefined;
-  const defRow = phase0 ? asArray(phase0.defStats)[playerIndex] : undefined;
-  const activeTime = phase0 ? asArray(phase0.playerActiveTimes)[playerIndex] : undefined;
+  const dpsStats = phase0 ? (phase0.dpsStats ?? phase0.DpsStats) : undefined;
+  const dpsStatsTargets = phase0 ? (phase0.dpsStatsTargets ?? phase0.DpsStatsTargets) : undefined;
+  const gameplayRow = phase0 ? asArray(phase0.gameplayStats ?? phase0.GameplayStats)[playerIndex] : undefined;
+  const defRow = phase0 ? asArray(phase0.defStats ?? phase0.DefStats)[playerIndex] : undefined;
+  const activeTime = phase0
+    ? asArray(phase0.playerActiveTimes ?? phase0.PlayerActiveTimes)[playerIndex]
+    : undefined;
 
-  const damage = Array.isArray(dpsRow) ? asNumber(dpsRow[0]) : 0;
   const activeTimeMs = asNumber(activeTime, durationMs);
-  const dps = activeTimeMs > 0 ? Math.round((damage * 1000) / activeTimeMs) : 0;
+  const dpsRow = asArray(dpsStats)[playerIndex];
+  // dpsStats = All (boss + adds); dpsStatsTargets = per-target (boss).
+  const dpsAll = Array.isArray(dpsRow) ? dpsFromHtmlRow(dpsRow, activeTimeMs) : undefined;
+  const dpsTargets = adaptHtmlDpsTargets(
+    dpsStatsTargets,
+    playerIndex,
+    asArray(dpsStats).length,
+    activeTimeMs,
+    dpsAll?.damage ?? 0,
+  );
 
   const firstAwareRaw = asNumber(rawPlayer.firstAware, 0);
   const lastAwareRaw = asNumber(rawPlayer.lastAware, durationMs / 1000);
@@ -389,6 +554,7 @@ function adaptPlayer(
 
   const rotationPhase = asArray(details.rotation)[0];
   const boonGraphPhase = asArray(details.boonGraph)[0];
+  const timeSavedSec = Array.isArray(gameplayRow) ? asNumber(gameplayRow[2]) : 0;
 
   return {
     name: asString(rawPlayer.name, 'Unknown'),
@@ -400,19 +566,13 @@ function adaptPlayer(
     lastAware,
     weaponSets: adaptWeaponSets(rawPlayer.weaponSets, durationMs),
     activeTimes: [activeTimeMs],
-    dpsAll: [
-      {
-        dps,
-        damage,
-        powerDamage: Array.isArray(dpsRow) ? asNumber(dpsRow[1]) : 0,
-        condiDamage: Array.isArray(dpsRow) ? asNumber(dpsRow[2]) : 0,
-      },
-    ],
+    dpsAll: dpsAll ? [dpsAll] : [],
+    dpsTargets: dpsTargets.length > 0 ? dpsTargets : undefined,
     statsAll: [
       {
         timeWasted: Array.isArray(gameplayRow) ? asNumber(gameplayRow[0]) : 0,
         wasted: Array.isArray(gameplayRow) ? asNumber(gameplayRow[1]) : 0,
-        timeSaved: Array.isArray(gameplayRow) ? asNumber(gameplayRow[2]) : 0,
+        timeSaved: timeSavedSec,
         saved: Array.isArray(gameplayRow) ? asNumber(gameplayRow[3]) : 0,
         swapCount: Array.isArray(gameplayRow) ? asNumber(gameplayRow[4]) : 0,
         skillCastUptime: Array.isArray(gameplayRow) ? asNumber(gameplayRow[7]) : 0,
@@ -427,7 +587,7 @@ function adaptPlayer(
         deadCount: Array.isArray(defRow) ? asNumber(defRow[14]) : 0,
       },
     ],
-    rotation: adaptRotation(rotationPhase),
+    rotation: adaptRotation(rotationPhase, timeSavedSec),
     buffUptimes: adaptBuffUptimes(boonGraphPhase),
     damageModifiers: phase0
       ? adaptDamageModifiers(phase0, playerIndex, modIdsForPlayer(html, profession))
@@ -476,6 +636,8 @@ export function adaptEiHtmlReport(raw: unknown): EILog {
     triggerID: typeof raw.triggerID === 'number' ? raw.triggerID : undefined,
     fightName: asString(raw.logName, 'Unknown encounter'),
     name: asString(raw.logName, 'Unknown encounter'),
+    icon: optionalString(raw.icon) || optionalString(raw.fightIcon) || undefined,
+    fightIcon: optionalString(raw.fightIcon) || optionalString(raw.icon) || undefined,
     arcVersion: asString(raw.arcVersion),
     gW2Build: asNumber(raw.gw2Build, asNumber(raw.gW2Build)),
     recordedBy: asString(raw.recordedBy),
@@ -513,4 +675,7 @@ export const __test__ = {
   secToMs,
   adaptRotation,
   adaptBuffUptimes,
+  reconcileReducedTimeGained,
+  expectedDurationFromFullCasts,
+  adaptHtmlDpsTargets,
 };

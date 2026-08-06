@@ -78,13 +78,34 @@ export const referenceLogCheck: Check = {
       checkId: 'reference-log',
       severity: dpsRatio < 0.8 ? 'warning' : dpsRatio < 0.95 ? 'info' : 'good',
       title: `${compactNumber(player.dps)} DPS, ${percent(dpsRatio)} of the reference`,
-      summary: `${player.name} on ${log.fightName} versus ${theirs.name} on ${reference.log.fightName}, which did ${compactNumber(theirs.dps)} DPS.`,
+      summary:
+        dpsRatio >= 0.95
+          ? 'DPS is in line with the reference.'
+          : dpsRatio >= 0.8
+            ? 'DPS trails the reference a bit.'
+            : 'DPS is well behind the reference.',
+      tip: `${player.name} on ${log.fightName} versus ${theirs.name} on ${reference.log.fightName}, which did ${compactNumber(theirs.dps)} DPS.`,
       caveat:
         'Encounter length, boss mechanics, target hitbox and group composition all move DPS independently of how well you played.',
-      metrics: [
-        { label: 'Your DPS', display: compactNumber(player.dps), value: player.dps, target: theirs.dps },
-        { label: 'Reference DPS', display: compactNumber(theirs.dps), value: theirs.dps },
-      ],
+      metrics: (() => {
+        const barMax = Math.max(player.dps, theirs.dps, 1);
+        return [
+          {
+            label: 'Your DPS',
+            display: compactNumber(player.dps),
+            value: player.dps,
+            target: theirs.dps,
+            barMax,
+          },
+          {
+            label: 'Reference DPS',
+            display: compactNumber(theirs.dps),
+            value: theirs.dps,
+            target: theirs.dps,
+            barMax,
+          },
+        ];
+      })(),
     });
 
     // --- Aborted casts (time wasted before skill fires) ---
@@ -116,21 +137,27 @@ export const referenceLogCheck: Check = {
           },
           detail:
             'Only casts aborted before they fired count here. Deliberate aftercast cancels are a good thing and are not compared as waste.',
-          metrics: [
-            {
-              label: 'Your aborted time',
-              display: `${duration(myWaste.wastedMs)} (${percent(myWaste.wasteShare, 1)})`,
-              value: myWaste.wasteShare * 100,
-              target: theirWaste.wasteShare * 100,
-              higherIsBetter: false,
-            },
-            {
-              label: 'Reference aborted time',
-              display: `${duration(theirWaste.wastedMs)} (${percent(theirWaste.wasteShare, 1)})`,
-              value: theirWaste.wasteShare * 100,
-              higherIsBetter: false,
-            },
-          ],
+          metrics: (() => {
+            const barMax = Math.max(myWaste.wasteShare, theirWaste.wasteShare, 0.01) * 100;
+            return [
+              {
+                label: 'Your aborted time',
+                display: `${duration(myWaste.wastedMs)} (${percent(myWaste.wasteShare, 1)})`,
+                value: myWaste.wasteShare * 100,
+                target: theirWaste.wasteShare * 100,
+                barMax,
+                higherIsBetter: false,
+              },
+              {
+                label: 'Reference aborted time',
+                display: `${duration(theirWaste.wastedMs)} (${percent(theirWaste.wasteShare, 1)})`,
+                value: theirWaste.wasteShare * 100,
+                target: theirWaste.wasteShare * 100,
+                barMax,
+                higherIsBetter: false,
+              },
+            ];
+          })(),
           impactScale: { info: 200, warning: 300, cap: { info: 6, warning: 12 } },
         }),
       );
@@ -165,19 +192,25 @@ export const referenceLogCheck: Check = {
               info: 'When padding with autos, let the chain reach its last hit before casting the next skill, the way the reference did.',
               warning: 'When padding with autos, let the chain reach its last hit before casting the next skill, the way the reference did.',
             },
-            metrics: [
-              {
-                label: 'Your chain completion',
-                display: percent(myChains.completionRate),
-                value: myChains.completionRate * 100,
-                target: theirChains.completionRate * 100,
-              },
-              {
-                label: 'Reference chain completion',
-                display: percent(theirChains.completionRate),
-                value: theirChains.completionRate * 100,
-              },
-            ],
+            metrics: (() => {
+              const barMax = Math.max(myChains.completionRate, theirChains.completionRate, 0.01) * 100;
+              return [
+                {
+                  label: 'Your chain completion',
+                  display: percent(myChains.completionRate),
+                  value: myChains.completionRate * 100,
+                  target: theirChains.completionRate * 100,
+                  barMax,
+                },
+                {
+                  label: 'Reference chain completion',
+                  display: percent(theirChains.completionRate),
+                  value: theirChains.completionRate * 100,
+                  target: theirChains.completionRate * 100,
+                  barMax,
+                },
+              ];
+            })(),
             impactScale: { info: 20, warning: 40, cap: { info: 5, warning: 10 } },
           }),
         );
@@ -239,11 +272,27 @@ export const referenceLogCheck: Check = {
         checkId: 'reference-log',
         severity: theirRatio - myRatio > 0.25 ? 'warning' : 'info',
         title: `${boonName} uptime trails the reference by ${percent(theirRatio - myRatio)}`,
-        summary: `You had ${percent(myRatio)} against their ${percent(theirRatio)}.`,
-        metrics: [
-          { label: `Your ${boonName}`, display: percent(myRatio), value: myRatio * 100, target: theirRatio * 100 },
-          { label: `Reference ${boonName}`, display: percent(theirRatio), value: theirRatio * 100 },
-        ],
+        summary: `${boonName} is behind the reference.`,
+        tip: `You had ${percent(myRatio)} against their ${percent(theirRatio)}.`,
+        metrics: (() => {
+          const barMax = Math.max(myRatio, theirRatio, 0.01) * 100;
+          return [
+            {
+              label: `Your ${boonName}`,
+              display: percent(myRatio),
+              value: myRatio * 100,
+              target: theirRatio * 100,
+              barMax,
+            },
+            {
+              label: `Reference ${boonName}`,
+              display: percent(theirRatio),
+              value: theirRatio * 100,
+              target: theirRatio * 100,
+              barMax,
+            },
+          ];
+        })(),
         impact: Math.min(8, (theirRatio - myRatio) * 20),
       });
     }
@@ -311,7 +360,10 @@ interface CompareArgs {
   similar: number;
   warning: number;
   labels: { better: string; similar: string; info: string; warning: string };
+  /** Long-form explanation; shown behind the summary info icon. */
   summaries: { better: string; similar: string; info: string; warning: string };
+  /** Short takeaway under the title. Falls back to a compact default when omitted. */
+  shortSummaries?: { better: string; similar: string; info: string; warning: string };
   fix?: { info?: string; warning?: string };
   detail?: string;
   caveat?: string;
@@ -324,25 +376,36 @@ interface CompareArgs {
 function compareAgainstReference(args: CompareArgs): Finding {
   let severity: Severity;
   let title: string;
+  let tip: string;
   let summary: string;
   let fix: string | undefined;
   let impact: number | undefined;
+
+  const shorts = args.shortSummaries ?? {
+    better: 'Ahead of the reference.',
+    similar: 'Looks normal versus the reference.',
+    info: 'A bit behind the reference.',
+    warning: 'Well behind the reference.',
+  };
 
   if (args.delta <= args.similar) {
     severity = 'good';
     const better = args.delta <= -args.similar;
     title = better ? args.labels.better : args.labels.similar;
-    summary = better ? args.summaries.better : args.summaries.similar;
+    tip = better ? args.summaries.better : args.summaries.similar;
+    summary = better ? shorts.better : shorts.similar;
   } else if (args.delta > args.warning) {
     severity = 'warning';
     title = args.labels.warning;
-    summary = args.summaries.warning;
+    tip = args.summaries.warning;
+    summary = shorts.warning;
     fix = args.fix?.warning;
     impact = Math.min(args.impactScale.cap.warning, args.delta * args.impactScale.warning);
   } else {
     severity = 'info';
     title = args.labels.info;
-    summary = args.summaries.info;
+    tip = args.summaries.info;
+    summary = shorts.info;
     fix = args.fix?.info;
     impact = Math.min(args.impactScale.cap.info, args.delta * args.impactScale.info);
   }
@@ -353,6 +416,7 @@ function compareAgainstReference(args: CompareArgs): Finding {
     severity,
     title,
     summary,
+    tip,
     detail: args.detail,
     fix,
     caveat: args.caveat,

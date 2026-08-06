@@ -2,6 +2,7 @@ import { fetchEliteInsightsJson, type FetchProgress } from '../api/fetchLog.ts';
 import { fetchSkillsLive, loadSkillIndex, SkillIndex } from '../api/gw2.ts';
 import { autoSelectRaidReference, type RaidBuildCandidate } from '../api/metabattle.ts';
 import { parseLogInput } from '../api/logSource.ts';
+import { resolveTopProfessionLog, type TopProfessionLog } from '../api/wingmanTopLog.ts';
 import { isSupportRole } from '../analysis/boonRole.ts';
 import { runAnalysis } from '../analysis/engine.ts';
 import type { AnalysisResult } from '../analysis/types.ts';
@@ -22,6 +23,18 @@ export interface AnalysisRequest {
   referenceBuildPage?: string;
 }
 
+/** Current-patch top-damage log for the fight/class, kept out of default comparisons. */
+export interface PatchTopLogBundle {
+  meta: TopProfessionLog;
+  log: NormalizedLog;
+  player: NormalizedPlayer;
+  /**
+   * The user's log re-analyzed with the patch-top log as `reference`. Same
+   * dialogue as a pasted reference log; the main report does not use this.
+   */
+  comparedResult: AnalysisResult;
+}
+
 export interface AnalysisBundle {
   log: NormalizedLog;
   player: NormalizedPlayer;
@@ -32,6 +45,12 @@ export interface AnalysisBundle {
   referenceAlternatives: RaidBuildCandidate[];
   referenceLog?: NormalizedLog;
   referencePlayer?: NormalizedPlayer;
+  /**
+   * Resolves to the current-patch top-damage log analysis when no reference was
+   * provided. Never used as `reference` for the main report. May resolve to
+   * undefined if Wingman has no record or the download fails.
+   */
+  patchTopPromise?: Promise<PatchTopLogBundle | undefined>;
   result: AnalysisResult;
   /** Non-fatal problems worth surfacing, such as a reference build failing to load. */
   warnings: string[];
@@ -105,6 +124,22 @@ export async function runAnalysisRequest(
 
   const build = inferBuild(log, player, skills);
 
+  // Kick off Wingman patch-top discovery early when no reference was pasted.
+  // The meta lookup stays out of the main analysis path entirely.
+  const wantsPatchTop = !request.referenceLogInput?.trim();
+  const patchTopMetaPromise = wantsPatchTop
+    ? resolveTopProfessionLog({
+        triggerId: log.triggerId,
+        fightName: log.fightName,
+        isCM: log.isCM,
+        profession: player.profession,
+        signal,
+      }).catch((error) => {
+        if (signal?.aborted) throw error;
+        return undefined;
+      })
+    : Promise.resolve(undefined);
+
   let referenceBuild: ReferenceBuild | undefined;
   let referenceAlternatives: RaidBuildCandidate[] = [];
   onProgress?.({ label: 'Choosing a MetaBattle raid build', detail: player.profession });
@@ -167,6 +202,24 @@ export async function runAnalysisRequest(
     reference: referenceLog && referencePlayer ? { log: referenceLog, player: referencePlayer } : undefined,
   });
 
+  // Download/analyze the top log in the background so the main report is not
+  // blocked. Failures stay silent — the UI simply omits the side panels.
+  const patchTopPromise = wantsPatchTop
+    ? patchTopMetaPromise.then((meta) =>
+        meta
+          ? loadPatchTopLog({
+              meta,
+              log,
+              player,
+              skills,
+              build,
+              referenceBuild,
+              signal,
+            })
+          : undefined,
+      )
+    : undefined;
+
   return {
     log,
     player,
@@ -176,7 +229,54 @@ export async function runAnalysisRequest(
     referenceAlternatives,
     referenceLog,
     referencePlayer,
+    patchTopPromise,
     result,
     warnings,
   };
+}
+
+async function loadPatchTopLog(options: {
+  meta: TopProfessionLog;
+  log: NormalizedLog;
+  player: NormalizedPlayer;
+  skills: SkillIndex;
+  build?: InferredBuild;
+  referenceBuild?: ReferenceBuild;
+  signal?: AbortSignal;
+}): Promise<PatchTopLogBundle | undefined> {
+  const { meta, log, player, skills, build, referenceBuild, signal } = options;
+  try {
+    // Same encounter and class already analyzed — nothing extra to show.
+    if (meta.permalink === log.source.permalink || meta.logId === log.source.id) {
+      return undefined;
+    }
+
+    const source = parseLogInput(meta.permalink);
+    const raw = await fetchEliteInsightsJson(source, { signal });
+    const topLog = normalizeLog(raw, source);
+    const topPlayer =
+      topLog.players.find((candidate) => candidate.profession === player.profession) ??
+      pickDefaultPlayer(topLog);
+    if (!topPlayer) return undefined;
+
+    await enrichSkills(skills, castSkillIds(topPlayer));
+    seedSkillsFromLog(skills, topLog);
+
+    // Same path as a pasted reference log — but only exposed via the side panels.
+    const comparedResult = runAnalysis({
+      log,
+      player,
+      window: log.fullFight,
+      skills,
+      build,
+      referenceBuild,
+      reference: { log: topLog, player: topPlayer },
+    });
+
+    return { meta, log: topLog, player: topPlayer, comparedResult };
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    // Silent by design: the main report should look identical when this fails.
+    return undefined;
+  }
 }

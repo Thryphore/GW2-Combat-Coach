@@ -11,6 +11,7 @@ import { referenceBuildFromChatCode } from '../model/chatCode.ts';
 import { normalizeLog, pickDefaultPlayer, type NormalizedLog, type NormalizedPlayer } from '../model/normalize.ts';
 import { BuildPanel } from './components/BuildPanel.tsx';
 import { FindingCard } from './components/FindingCard.tsx';
+import { AtAGlance } from './components/AtAGlance.tsx';
 import { SummaryHeader } from './components/SummaryHeader.tsx';
 import { Timeline } from './components/Timeline.tsx';
 
@@ -37,10 +38,33 @@ describe('result components', () => {
         score: result.score,
         players: log.players,
         onSelectPlayer: () => {},
+        build,
+        skills,
       }),
     );
     expect(html).toContain('Practice Golem');
+    expect(html).toContain('https://i.imgur.com/LRlXv1t.png');
     expect(html).toContain('Blade Dancer');
+    expect(html).toContain('Casts');
+    expect(html).toContain('At a glance');
+    expect(html).toContain('DPS');
+    expect(html).toContain('Auto chains');
+  });
+
+  it('renders at-a-glance cubes', () => {
+    const html = renderToStaticMarkup(
+      createElement(AtAGlance, {
+        log,
+        player,
+        skills,
+        compare: { dps: 30_000, cleaveDps: 30_000, label: 'top log' },
+      }),
+    );
+    expect(html).toContain('At a glance');
+    expect(html).toContain('of top log');
+    expect(html).toContain('Idle time');
+    expect(html).toContain('Boons');
+    expect(html).toContain('Quickness.png');
   });
 
   it('renders every finding the engine produced', () => {
@@ -145,12 +169,15 @@ describe('result components', () => {
             score: 120,
           },
         ],
+        onSelectAlternative: () => undefined,
       }),
     );
     expect(html).toContain('Signet of the Ether');
     expect(html).toContain('Power Virtuoso');
     expect(html).toContain('Infinite Forge');
     expect(html).toContain('Auto-chosen MetaBattle raid build');
+    expect(html).toContain('Choose a different build');
+    expect(html).toContain('MetaBattle link');
     expect(html).toContain('Condi DPS');
     expect(html).toContain('Consumables');
     expect(html).toContain('Food');

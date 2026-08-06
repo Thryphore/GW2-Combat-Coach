@@ -78,8 +78,9 @@ export interface EICastedSkill {
   duration: number;
   /**
    * Time gained from the animation. Positive means the player cancelled after
-   * the skill fired (good technique). Negative means the cast was aborted
-   * before it did anything, so the time was wasted.
+   * the skill activated (aftercast cancel). Negative means the cast was aborted
+   * before activation, so the time was wasted. Positive does not guarantee every
+   * hit landed on multi-hit or channeled skills.
    */
   timeGained: number;
   /** -1 (100% slow) to 1 (100% quickness). */
@@ -231,6 +232,13 @@ export interface EIPlayer {
   consumables?: EIConsumable[];
   totalDamageDist?: EIDamageDist[][];
   targetDamageDist?: EIDamageDist[][][];
+  /** Per-second outgoing damage for each phase (cleave / all targets). */
+  damage1S?: number[][];
+  /**
+   * Per-second outgoing damage per target per phase.
+   * Indexed [target][phase][second].
+   */
+  targetDamage1S?: number[][][];
   deathRecap?: EIDeathRecap[];
 }
 
@@ -262,7 +270,10 @@ export interface EILog {
   eiLogID?: number;
   fightName?: string;
   name?: string;
+  /** Deprecated EI field; prefer `icon`. */
   fightIcon?: string;
+  /** Encounter / fight icon URL (or Wingman `/cache/…` path). */
+  icon?: string;
   arcVersion?: string;
   gW2Build?: number;
   language?: string;

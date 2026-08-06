@@ -3,7 +3,7 @@ import { SkillIndex, type ProfessionSnapshot } from '../api/gw2.ts';
 import mesmerSnapshot from '../data/gw2/mesmer.json';
 import { inferBuild } from '../model/build.ts';
 import { normalizeLog, pickDefaultPlayer, type NormalizedLog, type NormalizedPlayer } from '../model/normalize.ts';
-import { runAnalysis } from './engine.ts';
+import { applyDamageScoreFloor, runAnalysis } from './engine.ts';
 import type { AnalysisResult } from './types.ts';
 import { fixtureSource, virtuosoLogFixture } from './__fixtures__/virtuosoLog.ts';
 
@@ -47,6 +47,10 @@ describe('normalizeLog', () => {
     // The "2Hand" placeholder is not a weapon.
     expect(player.weaponSets[1].weapons).toEqual(['Spear']);
     expect(player.dps).toBe(24_500);
+    expect(player.cleaveDps).toBe(24_500);
+    expect(player.peakDps).toBe(41_000);
+    expect(player.peakCleaveDps).toBe(41_000);
+    expect(log.fightIcon).toBe('https://i.imgur.com/LRlXv1t.png');
   });
 
   it('names damage modifiers from the damage modifier map', () => {
@@ -68,10 +72,12 @@ describe('auto-attack chain check', () => {
 describe('cancelled cast checks', () => {
   it('separates aborted casts from deliberate animation cancels', () => {
     const aborted = finding('wasted-casts/aborted');
-    expect(aborted?.summary).toContain('Rain of Swords');
+    expect(aborted?.evidence?.some((entry) => entry.label.includes('Rain of Swords'))).toBe(true);
+    expect(aborted?.tip).toContain('Elite Insights marks a cast as wasted');
 
     const saved = finding('wasted-casts/saved');
     expect(saved?.severity).toBe('good');
+    expect(saved?.evidence?.some((entry) => entry.label.includes('Thousand Cuts'))).toBe(true);
   });
 });
 
@@ -163,9 +169,32 @@ describe('runAnalysis', () => {
     expect(indices).toEqual([...indices].sort((a, b) => a - b));
   });
 
+  it('never scores below DPS percent of the reference', () => {
+    const referencePlayer = { ...player, dps: player.dps / 0.85, name: 'Reference' };
+    const withReference = runAnalysis({
+      log,
+      player,
+      window: log.fullFight,
+      skills,
+      build: inferBuild(log, player, skills),
+      reference: { log, player: referencePlayer },
+    });
+
+    expect(withReference.score).toBeGreaterThanOrEqual(85);
+  });
+
   it('explains why inapplicable checks did not run', () => {
     const skipped = Object.fromEntries(result.checksSkipped.map(({ check, reason }) => [check.id, reason]));
     expect(skipped['reference-log']).toBe('No reference log was provided.');
     expect(skipped['build-match']).toBe('No MetaBattle raid reference build was available.');
+  });
+});
+
+describe('applyDamageScoreFloor', () => {
+  it('raises low scores up to the damage percent and leaves higher scores alone', () => {
+    expect(applyDamageScoreFloor(40, 8500, 10_000)).toBe(85);
+    expect(applyDamageScoreFloor(92, 8500, 10_000)).toBe(92);
+    expect(applyDamageScoreFloor(40, 12_000, 10_000)).toBe(100);
+    expect(applyDamageScoreFloor(40, 8500, 0)).toBe(40);
   });
 });

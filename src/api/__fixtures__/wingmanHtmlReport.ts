@@ -14,6 +14,7 @@ export const wingmanHtmlReport = {
   logEnd: '2024-03-11 17:39:50 -04:00',
   evtcRecordingDuration: '02m 00s 000ms',
   triggerID: 1,
+  icon: 'https://i.imgur.com/TCSo8TI.png',
   skillMap: {
     s1001: { id: 1001, name: 'Mind Slash', aa: true, isSwap: false, notAccurate: false },
     s1002: { id: 1002, name: 'Blade Song', aa: false, isSwap: false, notAccurate: false },
@@ -64,7 +65,10 @@ export const wingmanHtmlReport = {
       success: true,
       mode: 'Normal Mode',
       startStatus: null,
+      // Cleave / all-targets damage.
       dpsStats: [[1_200_000, 1_000_000, 200_000, 0]],
+      // Per-player, per-target boss damage (single-target).
+      dpsStatsTargets: [[[900_000, 750_000, 150_000, 0]]],
       gameplayStats: [[1.5, 2, 0.8, 3, 1, 0, 0, 90, 80]],
       defStats: [[50_000, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, '0% Downed', 0, '100% Alive']],
       playerActiveTimes: [120_000],

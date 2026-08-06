@@ -24,7 +24,13 @@ export interface Metric {
   /** Pre-formatted for display; `value` stays numeric for bars and sorting. */
   display: string;
   value: number;
+  /** Goal used for bar coloring (and for bar width when `barMax` is omitted). */
   target?: number;
+  /**
+   * Shared absolute scale for side-by-side comparison bars. When set, bar width
+   * is `value / barMax`; `target` still drives the color.
+   */
+  barMax?: number;
   /** Defaults to true; set false when a lower number is better. */
   higherIsBetter?: boolean;
 }
@@ -44,7 +50,7 @@ export interface Finding {
   summary: string;
   detail?: string;
   fix?: string;
-  /** Short hover tip shown next to the title via an info icon. */
+  /** Longer explanation shown next to the summary via an info icon. */
   tip?: string;
   /** Where the analysis is approximate, say so on the finding itself. */
   caveat?: string;
@@ -84,7 +90,7 @@ export interface Check {
 
 export interface AnalysisResult {
   findings: Finding[];
-  /** 0-100 execution score derived from finding impacts. */
+  /** 0-100 execution score from finding impacts, floored by DPS% vs a reference when present. */
   score: number;
   checksRun: Check[];
   checksSkipped: { check: Check; reason: string }[];

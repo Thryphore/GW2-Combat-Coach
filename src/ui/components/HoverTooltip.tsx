@@ -27,7 +27,7 @@ interface TipPos {
 
 const VIEW_PAD = 8;
 const GAP = 6;
-const MAX_WIDTH = 280;
+const MAX_WIDTH = 360;
 
 /**
  * Dense hover/focus tooltip rendered in a portal so parent overflow cannot clip it.
@@ -118,7 +118,7 @@ export function HoverTooltip({ content, children, className, style: triggerStyle
             id={tipId}
             role="tooltip"
             style={style}
-            className="pointer-events-none fixed z-50 rounded border border-amber-700/80 bg-ink-950/95 px-2.5 py-2 text-left text-ink-200 shadow-lg shadow-black/50 backdrop-blur-sm"
+            className="pointer-events-none fixed z-50 rounded-xl border border-ink-700/90 bg-ink-900/95 px-3 py-2.5 text-left text-ink-200 shadow-xl shadow-black/40 ring-1 ring-white/5 backdrop-blur-md"
           >
             {content}
           </div>,

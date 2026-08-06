@@ -67,9 +67,22 @@ export function runAnalysis(context: AnalysisContext): AnalysisResult {
   });
 
   const penalty = findings.reduce((total, finding) => total + (finding.impact ?? 0), 0);
-  const score = Math.max(0, Math.min(100, Math.round(100 - penalty)));
+  const rawScore = Math.max(0, Math.min(100, Math.round(100 - penalty)));
+  const score = context.reference
+    ? applyDamageScoreFloor(rawScore, context.player.dps, context.reference.player.dps)
+    : rawScore;
 
   return { findings, score, checksRun, checksSkipped };
+}
+
+/**
+ * Score cannot sit below the player's DPS as a percent of the reference
+ * (capped at 100). Without a usable reference DPS, the raw score is unchanged.
+ */
+export function applyDamageScoreFloor(score: number, playerDps: number, referenceDps: number): number {
+  if (!(referenceDps > 0)) return score;
+  const damagePercent = Math.max(0, Math.min(100, Math.round((playerDps / referenceDps) * 100)));
+  return Math.max(score, damagePercent);
 }
 
 export function scoreLabel(score: number): string {

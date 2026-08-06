@@ -1,11 +1,12 @@
 import type { ChainPosition, SkillInfo, TraitInfo } from '../../api/gw2.ts';
 import type { ConsumableKind } from '../../model/normalize.ts';
 import { formatGw2Text } from '../formatGw2Text.ts';
-import { skillKeybind, skillSlotLabel } from '../skillKeybind.ts';
+import { useSettings } from '../settings/SettingsContext.tsx';
+import { skillSlotLabel } from '../skillKeybind.ts';
 
 function TipRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 leading-tight">
+    <div className="flex items-baseline justify-between gap-3 text-xs leading-snug">
       <span className="shrink-0 text-ink-400">{label}</span>
       <span className="text-right text-ink-200">{value}</span>
     </div>
@@ -14,7 +15,7 @@ function TipRow({ label, value }: { label: string; value: string }) {
 
 function KeyBadge({ bind }: { bind: string }) {
   return (
-    <span className="inline-flex min-w-5 items-center justify-center rounded border border-amber-600/70 bg-ink-900 px-1 font-mono text-[11px] font-semibold text-amber-300">
+    <span className="inline-flex min-w-5 items-center justify-center rounded-md bg-brand-500/15 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-brand-400 ring-1 ring-inset ring-brand-500/35">
       {bind}
     </span>
   );
@@ -32,7 +33,8 @@ export function SkillTipContent({
   chain?: ChainPosition;
   footnote?: string;
 }) {
-  const bind = keybind ?? skillKeybind(skill.slot);
+  const { resolveKeybind } = useSettings();
+  const bind = keybind ?? resolveKeybind(skill.slot);
   const slotLabel = skillSlotLabel(skill.slot);
   const description = skill.description ? formatGw2Text(skill.description) : undefined;
 
@@ -49,26 +51,31 @@ export function SkillTipContent({
     !!skill.comboFinisher;
 
   return (
-    <div className="space-y-1.5 text-[11px]">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-start gap-1.5">
+    <div className="min-w-48 space-y-2 text-xs">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
           {skill.icon && (
-            <img src={skill.icon} alt="" className="mt-0.5 h-7 w-7 shrink-0 rounded" loading="lazy" />
+            <img
+              src={skill.icon}
+              alt=""
+              className="mt-0.5 h-8 w-8 shrink-0 rounded-lg ring-1 ring-ink-700"
+              loading="lazy"
+            />
           )}
           <div className="min-w-0">
-            <div className="truncate font-semibold text-amber-300">{skill.name}</div>
-            {meta.length > 0 && <div className="text-[10px] text-ink-400">{meta.join(' · ')}</div>}
+            <div className="truncate font-semibold text-white">{skill.name}</div>
+            {meta.length > 0 && <div className="mt-0.5 text-[11px] text-ink-400">{meta.join(' · ')}</div>}
           </div>
         </div>
         {bind && <KeyBadge bind={bind} />}
       </div>
 
       {description && (
-        <p className="whitespace-pre-line leading-snug text-ink-200">{description}</p>
+        <p className="whitespace-pre-line leading-relaxed text-ink-200">{description}</p>
       )}
 
       {hasStats && (
-        <div className="space-y-0.5 border-t border-ink-700 pt-1.5">
+        <div className="space-y-1 border-t border-ink-700/80 pt-2">
           {skill.rechargeSec !== undefined && (
             <TipRow label="Recharge" value={`${skill.rechargeSec}s`} />
           )}
@@ -99,7 +106,9 @@ export function SkillTipContent({
         </div>
       )}
 
-      {footnote && <p className="border-t border-ink-800 pt-1 text-[10px] text-ink-400">{footnote}</p>}
+      {footnote && (
+        <p className="border-t border-ink-700/80 pt-2 text-[11px] text-ink-400">{footnote}</p>
+      )}
     </div>
   );
 }
@@ -119,21 +128,28 @@ export function TraitTipContent({
     .join(' · ');
 
   return (
-    <div className="space-y-1.5 text-[11px]">
-      <div className="flex items-start gap-1.5">
+    <div className="min-w-48 space-y-2 text-xs">
+      <div className="flex items-start gap-2">
         {trait.icon && (
-          <img src={trait.icon} alt="" className="mt-0.5 h-7 w-7 shrink-0 rounded" loading="lazy" />
+          <img
+            src={trait.icon}
+            alt=""
+            className="mt-0.5 h-8 w-8 shrink-0 rounded-lg ring-1 ring-ink-700"
+            loading="lazy"
+          />
         )}
         <div className="min-w-0">
-          <div className="truncate font-semibold text-amber-300">{trait.name}</div>
-          {meta && <div className="text-[10px] text-ink-400">{meta}</div>}
+          <div className="truncate font-semibold text-white">{trait.name}</div>
+          {meta && <div className="mt-0.5 text-[11px] text-ink-400">{meta}</div>}
         </div>
       </div>
       {description && (
-        <p className="whitespace-pre-line leading-snug text-ink-200">{description}</p>
+        <p className="whitespace-pre-line leading-relaxed text-ink-200">{description}</p>
       )}
       {evidence && (
-        <p className="border-t border-ink-800 pt-1 text-[10px] text-ink-400">Detected via {evidence}</p>
+        <p className="border-t border-ink-700/80 pt-2 text-[11px] text-ink-400">
+          Detected via {evidence}
+        </p>
       )}
     </div>
   );
@@ -159,15 +175,22 @@ export function ConsumableTipContent({
   const minutes = Math.round(durationMs / 60_000);
 
   return (
-    <div className="space-y-1.5 text-[11px]">
-      <div className="flex items-start gap-1.5">
-        {icon && <img src={icon} alt="" className="mt-0.5 h-7 w-7 shrink-0 rounded" loading="lazy" />}
+    <div className="min-w-40 space-y-2 text-xs">
+      <div className="flex items-start gap-2">
+        {icon && (
+          <img
+            src={icon}
+            alt=""
+            className="mt-0.5 h-8 w-8 shrink-0 rounded-lg ring-1 ring-ink-700"
+            loading="lazy"
+          />
+        )}
         <div className="min-w-0">
-          <div className="truncate font-semibold text-amber-300">{name}</div>
-          <div className="text-[10px] text-ink-400">{kindLabel}</div>
+          <div className="truncate font-semibold text-white">{name}</div>
+          <div className="mt-0.5 text-[11px] text-ink-400">{kindLabel}</div>
         </div>
       </div>
-      <div className="space-y-0.5 border-t border-ink-700 pt-1.5">
+      <div className="space-y-1 border-t border-ink-700/80 pt-2">
         {minutes > 0 && <TipRow label="Duration" value={`${minutes}m`} />}
         <TipRow label="Slot" value={kindLabel} />
       </div>
@@ -177,8 +200,10 @@ export function ConsumableTipContent({
 
 /** Small keybind pill shown on skill chips for quick scanning. */
 export function KeybindChip({ bind }: { bind: string }) {
+  const { settings } = useSettings();
+  if (!settings.showKeybinds) return null;
   return (
-    <span className="ml-0.5 inline-flex min-w-4 items-center justify-center rounded bg-ink-900 px-1 font-mono text-[10px] font-semibold text-amber-300/90 ring-1 ring-amber-700/50">
+    <span className="ml-0.5 inline-flex min-w-4 items-center justify-center rounded-md bg-brand-500/15 px-1 font-mono text-[10px] font-semibold text-brand-400 ring-1 ring-inset ring-brand-500/30">
       {bind}
     </span>
   );

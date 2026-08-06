@@ -113,6 +113,8 @@ export function virtuosoLogFixture(): EILog {
     gW2Build: 190_000,
     triggerID: 15_438,
     fightName: 'Practice Golem',
+    // Elite Insights Massive Golem encounter icon.
+    icon: 'https://i.imgur.com/LRlXv1t.png',
     durationMS: DURATION_MS,
     success: true,
     isCM: false,
@@ -134,6 +136,11 @@ export function virtuosoLogFixture(): EILog {
           { weapons: ['Spear', '2Hand'], start: 0, end: DURATION_MS },
         ],
         dpsAll: [{ dps: 24_500, damage: 1_470_000 }],
+        // Single-target matches cleave on the golem (no adds).
+        dpsTargets: [[{ dps: 24_500, damage: 1_470_000 }]],
+        // Cumulative 1s damage (EI Damage1S shape); peak step is 41k.
+        damage1S: [[18_000, 40_000, 81_000, 100_500, 124_500]],
+        targetDamage1S: [[[18_000, 40_000, 81_000, 100_500, 124_500]]],
         statsAll: [{ wasted: 1, timeWasted: 0.8, saved: 1, timeSaved: 0.3, swapCount: 1 }],
         defenses: [{ deadCount: 0, downCount: 0, dodgeCount: 4 }],
         rotation: rotation(),
