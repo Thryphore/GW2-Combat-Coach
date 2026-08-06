@@ -567,7 +567,7 @@ function adaptPlayer(
     weaponSets: adaptWeaponSets(rawPlayer.weaponSets, durationMs),
     activeTimes: [activeTimeMs],
     dpsAll: dpsAll ? [dpsAll] : [],
-    dpsTargets: dpsTargets.length > 0 ? dpsTargets : undefined,
+    dpsTargets: dpsTargets && dpsTargets.length > 0 ? dpsTargets : undefined,
     statsAll: [
       {
         timeWasted: Array.isArray(gameplayRow) ? asNumber(gameplayRow[0]) : 0,
