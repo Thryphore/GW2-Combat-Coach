@@ -13,6 +13,7 @@
     "fetch-gw2-data": "node scripts/fetch-gw2-data.mjs"
   },
   "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.84",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

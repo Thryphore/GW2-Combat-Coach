@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { buildAiContext, formatAiContextForPrompt } from '../ai/buildAiContext.ts';
 import { COOLDOWN_NORMAL_SUMMARY } from '../analysis/checks/cooldowns.ts';
 import { IDLE_NORMAL_SUMMARY } from '../analysis/checks/downtime.ts';
 import { applyDamageScoreFloor } from '../analysis/engine.ts';
 import type { Finding, Severity } from '../analysis/types.ts';
+import { AiChatPanel } from './components/AiChatPanel.tsx';
 import { BuildPanel } from './components/BuildPanel.tsx';
 import { CollapsiblePanel } from './components/CollapsiblePanel.tsx';
 import { FindingCard } from './components/FindingCard.tsx';
@@ -455,6 +457,38 @@ function Results({
   ];
   const hiddenFindingIds = hiddenFindings.map((finding) => finding.id);
 
+  const compareDps = compare?.dps;
+  const compareCleaveDps = compare?.cleaveDps;
+  const compareLabel = compare?.label;
+  const aiContext = useMemo(
+    () =>
+      buildAiContext({
+        log,
+        player,
+        score,
+        findings: result.findings,
+        build,
+        referenceBuild,
+        compare:
+          compareDps != null && compareCleaveDps != null && compareLabel
+            ? { dps: compareDps, cleaveDps: compareCleaveDps, label: compareLabel }
+            : undefined,
+      }),
+    [
+      log,
+      player,
+      score,
+      result.findings,
+      build,
+      referenceBuild,
+      compareDps,
+      compareCleaveDps,
+      compareLabel,
+    ],
+  );
+  const aiContextText = useMemo(() => formatAiContextForPrompt(aiContext), [aiContext]);
+  const aiConversationKey = `${log.source.kind}:${log.source.id}:${player.name}:${score}`;
+
   return (
     <div className="mt-6 space-y-6">
       {warnings.length > 0 && (
@@ -479,6 +513,12 @@ function Results({
         compare={compare}
         findingIds={findingIds}
         hiddenFindingIds={hiddenFindingIds}
+      />
+
+      <AiChatPanel
+        context={aiContext}
+        contextText={aiContextText}
+        conversationKey={aiConversationKey}
       />
 
       {SEVERITY_SECTIONS.map((section) => {

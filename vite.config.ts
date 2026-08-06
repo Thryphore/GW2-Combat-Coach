@@ -10,6 +10,13 @@ const base = process.env.VITE_BASE ?? (repoName ? `/${repoName}/` : '/');
 export default defineConfig({
   base,
   plugins: [react(), tailwindcss()],
+  // WebLLM ships its own workers / WASM; keep Vite from pre-bundling it incorrectly.
+  optimizeDeps: {
+    exclude: ['@mlc-ai/web-llm'],
+  },
+  worker: {
+    format: 'es',
+  },
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
