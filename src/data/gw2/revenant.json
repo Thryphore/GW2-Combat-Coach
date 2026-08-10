@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-05",
+  "generatedAt": "2026-08-10",
   "profession": "Revenant",
   "icon": "https://render.guildwars2.com/file/7C9309BE7A2A48C6A9FBCC70CC1EBEBFD7593C05/961390.png",
   "specializations": [
@@ -2742,7 +2742,7 @@
     "62729": {
       "id": 62729,
       "name": "Alliance Tactics",
-      "slot": "Profession_2",
+      "slot": "Profession_3",
       "type": "Profession",
       "specialization": 69,
       "icon": "https://render.guildwars2.com/file/DE01C14360F2E7E81C336241C7D6ED6FA14DA005/2491605.png",
