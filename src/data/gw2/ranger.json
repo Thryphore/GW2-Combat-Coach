@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-10",
+  "generatedAt": "2026-08-17",
   "profession": "Ranger",
   "icon": "https://render.guildwars2.com/file/49B10316B424F4E20139EB5E51ADCF24A8724E9B/156640.png",
   "specializations": [
@@ -2778,7 +2778,6 @@
       "name": "Worldly Impact",
       "slot": "Profession_3",
       "type": "Profession",
-      "specialization": 55,
       "icon": "https://render.guildwars2.com/file/CFC8BF0C0DFEE030C12FDF0ABDD4E22F9C002924/1770572.png",
       "description": "Beast. Draw in and release a blast of your energy, dealing hefty damage to nearby foes.",
       "rechargeSec": 25,
@@ -3184,6 +3183,7 @@
       "name": "Unflinching Fortitude",
       "slot": "Profession_3",
       "type": "Profession",
+      "specialization": 55,
       "icon": "https://render.guildwars2.com/file/0A0059CF0F036DBBE3EDAAFBC6136EA5F01E43CD/1770567.png",
       "description": "Beast. Shrug off all movement-impairing conditions and become unflinching in the face of normal attacks.",
       "rechargeSec": 35
