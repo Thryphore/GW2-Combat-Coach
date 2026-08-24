@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-17",
+  "generatedAt": "2026-08-24",
   "profession": "Thief",
   "icon": "https://render.guildwars2.com/file/F9EC00E23F630D6DB20CDA985592EC010E2A5705/156641.png",
   "specializations": [
@@ -3511,8 +3511,9 @@
     "76582": {
       "id": 76582,
       "name": "Metal Legion Guitar",
-      "slot": "Profession_2",
-      "type": "Profession",
+      "slot": "Weapon_1",
+      "type": "Weapon",
+      "weaponType": "Nothing",
       "flags": [
         "NoUnderwater"
       ],
@@ -3532,9 +3533,8 @@
     "76633": {
       "id": 76633,
       "name": "Forged Surfer Dash",
-      "slot": "Weapon_1",
-      "type": "Weapon",
-      "weaponType": "Nothing",
+      "slot": "Profession_2",
+      "type": "Profession",
       "flags": [
         "GroundTargeted",
         "NoUnderwater"
@@ -3631,9 +3631,8 @@
     "76816": {
       "id": 76816,
       "name": "Chak Shield",
-      "slot": "Weapon_1",
-      "type": "Weapon",
-      "weaponType": "Nothing",
+      "slot": "Profession_2",
+      "type": "Profession",
       "icon": "https://render.guildwars2.com/file/4506224EB1921800602CAD52B6B209960FE51153/3680209.png",
       "description": "Defensive Artifact. Place an electrified shield at your position that blocks projectiles, dealing damage to enemies and granting barrier to allies within it.\n\nFor a short time after using this skill, your weapon skills that cost initiative refund initiative.",
       "comboField": "Light"
@@ -3690,8 +3689,9 @@
     "76909": {
       "id": 76909,
       "name": "Unstable Skritt Bomb",
-      "slot": "Profession_2",
-      "type": "Profession",
+      "slot": "Weapon_1",
+      "type": "Weapon",
+      "weaponType": "Nothing",
       "icon": "https://render.guildwars2.com/file/0FBFB6FA27C9BEBD1872DAACDB040AEA71A616A9/3680208.png",
       "description": "Backfire. The bomb explodes in your hands, damaging you and damaging and knocking down enemies around you. \n\nFor a short time after using this skill, you take increased strike and condition damage."
     },
@@ -3722,8 +3722,9 @@
     "77192": {
       "id": 77192,
       "name": "Summon Kryptis Turret",
-      "slot": "Profession_2",
-      "type": "Profession",
+      "slot": "Weapon_1",
+      "type": "Weapon",
+      "weaponType": "Nothing",
       "flags": [
         "GroundTargeted",
         "NoUnderwater"
