@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-31",
+  "generatedAt": "2026-09-07",
   "profession": "Ranger",
   "icon": "https://render.guildwars2.com/file/49B10316B424F4E20139EB5E51ADCF24A8724E9B/156640.png",
   "specializations": [
@@ -2608,7 +2608,6 @@
       "name": "Worldly Impact",
       "slot": "Profession_3",
       "type": "Profession",
-      "specialization": 55,
       "flags": [
         "NoUnderwater"
       ],
@@ -2778,6 +2777,7 @@
       "name": "Worldly Impact",
       "slot": "Profession_3",
       "type": "Profession",
+      "specialization": 55,
       "icon": "https://render.guildwars2.com/file/CFC8BF0C0DFEE030C12FDF0ABDD4E22F9C002924/1770572.png",
       "description": "Beast. Draw in and release a blast of your energy, dealing hefty damage to nearby foes.",
       "rechargeSec": 25,
@@ -2877,7 +2877,6 @@
       "name": "Prelude Lash",
       "slot": "Profession_3",
       "type": "Profession",
-      "specialization": 55,
       "icon": "https://render.guildwars2.com/file/6BE209FCDE6DB2A802F54910DB73C0B70FF0E91B/1770563.png",
       "description": "Beast. Pull foes toward you and bind them briefly.",
       "rechargeSec": 25
@@ -3056,7 +3055,6 @@
       "name": "Spiritual Reprieve",
       "slot": "Profession_3",
       "type": "Profession",
-      "specialization": 55,
       "icon": "https://render.guildwars2.com/file/0FA53836694C91EA3934E2929701EE56F32B7899/1770566.png",
       "description": "Beast. Restore health to your allies and grant them a reprieve from conditions.",
       "rechargeSec": 35

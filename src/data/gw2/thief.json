@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-31",
+  "generatedAt": "2026-09-07",
   "profession": "Thief",
   "icon": "https://render.guildwars2.com/file/F9EC00E23F630D6DB20CDA985592EC010E2A5705/156641.png",
   "specializations": [
@@ -3511,8 +3511,9 @@
     "76582": {
       "id": 76582,
       "name": "Metal Legion Guitar",
-      "slot": "Profession_2",
-      "type": "Profession",
+      "slot": "Weapon_1",
+      "type": "Weapon",
+      "weaponType": "Nothing",
       "flags": [
         "NoUnderwater"
       ],
@@ -3532,8 +3533,9 @@
     "76633": {
       "id": 76633,
       "name": "Forged Surfer Dash",
-      "slot": "Profession_2",
-      "type": "Profession",
+      "slot": "Weapon_1",
+      "type": "Weapon",
+      "weaponType": "Nothing",
       "flags": [
         "GroundTargeted",
         "NoUnderwater"
@@ -3556,9 +3558,8 @@
     "76702": {
       "id": 76702,
       "name": "Exalted Hammer",
-      "slot": "Weapon_1",
-      "type": "Weapon",
-      "weaponType": "Nothing",
+      "slot": "Profession_2",
+      "type": "Profession",
       "flags": [
         "GroundTargeted",
         "NoUnderwater"
@@ -3584,8 +3585,9 @@
     "76733": {
       "id": 76733,
       "name": "Zephyrite Sun Crystal",
-      "slot": "Profession_2",
-      "type": "Profession",
+      "slot": "Weapon_1",
+      "type": "Weapon",
+      "weaponType": "Nothing",
       "icon": "https://render.guildwars2.com/file/3C1B2075B7B164EB2ABE4F6650F553D40F689E53/3680218.png",
       "description": "Defensive Artifact. Dash toward your target, damaging and inflicting conditions on enemies and removing conditions from allies around you when you reach your destination. You evade attacks as long as you are still traveling.\n\nFor a short time after using this skill, whenever you use a weapon skill that costs initiative, remove conditions from yourself.",
       "rechargeSec": 1
@@ -3689,9 +3691,8 @@
     "76909": {
       "id": 76909,
       "name": "Unstable Skritt Bomb",
-      "slot": "Weapon_1",
-      "type": "Weapon",
-      "weaponType": "Nothing",
+      "slot": "Profession_2",
+      "type": "Profession",
       "icon": "https://render.guildwars2.com/file/0FBFB6FA27C9BEBD1872DAACDB040AEA71A616A9/3680208.png",
       "description": "Backfire. The bomb explodes in your hands, damaging you and damaging and knocking down enemies around you. \n\nFor a short time after using this skill, you take increased strike and condition damage."
     },
@@ -3722,8 +3723,9 @@
     "77192": {
       "id": 77192,
       "name": "Summon Kryptis Turret",
-      "slot": "Profession_2",
-      "type": "Profession",
+      "slot": "Weapon_1",
+      "type": "Weapon",
+      "weaponType": "Nothing",
       "flags": [
         "GroundTargeted",
         "NoUnderwater"
@@ -3755,9 +3757,8 @@
     "77277": {
       "id": 77277,
       "name": "Mistburn Mortar",
-      "slot": "Weapon_1",
-      "type": "Weapon",
-      "weaponType": "Nothing",
+      "slot": "Profession_2",
+      "type": "Profession",
       "flags": [
         "GroundTargeted",
         "NoUnderwater"
