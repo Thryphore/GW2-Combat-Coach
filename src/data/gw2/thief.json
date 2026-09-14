@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-07",
+  "generatedAt": "2026-09-14",
   "profession": "Thief",
   "icon": "https://render.guildwars2.com/file/F9EC00E23F630D6DB20CDA985592EC010E2A5705/156641.png",
   "specializations": [
@@ -3546,8 +3546,9 @@
     "76674": {
       "id": 76674,
       "name": "Holo-Dancer Decoy",
-      "slot": "Profession_2",
-      "type": "Profession",
+      "slot": "Weapon_1",
+      "type": "Weapon",
+      "weaponType": "Nothing",
       "flags": [
         "GroundTargeted",
         "NoUnderwater"
@@ -3558,8 +3559,9 @@
     "76702": {
       "id": 76702,
       "name": "Exalted Hammer",
-      "slot": "Profession_2",
-      "type": "Profession",
+      "slot": "Weapon_1",
+      "type": "Weapon",
+      "weaponType": "Nothing",
       "flags": [
         "GroundTargeted",
         "NoUnderwater"
@@ -3691,8 +3693,9 @@
     "76909": {
       "id": 76909,
       "name": "Unstable Skritt Bomb",
-      "slot": "Profession_2",
-      "type": "Profession",
+      "slot": "Weapon_1",
+      "type": "Weapon",
+      "weaponType": "Nothing",
       "icon": "https://render.guildwars2.com/file/0FBFB6FA27C9BEBD1872DAACDB040AEA71A616A9/3680208.png",
       "description": "Backfire. The bomb explodes in your hands, damaging you and damaging and knocking down enemies around you. \n\nFor a short time after using this skill, you take increased strike and condition damage."
     },
