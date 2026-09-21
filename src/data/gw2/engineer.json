@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-14",
+  "generatedAt": "2026-09-21",
   "profession": "Engineer",
   "icon": "https://render.guildwars2.com/file/5CCB361F44CCC7256132405D31E3A24DACCF440A/156632.png",
   "specializations": [
@@ -4854,6 +4854,10 @@
     [
       7700,
       79766
+    ],
+    [
+      7746,
+      80908
     ]
   ]
 }

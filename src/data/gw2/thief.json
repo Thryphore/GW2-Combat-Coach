@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-14",
+  "generatedAt": "2026-09-21",
   "profession": "Thief",
   "icon": "https://render.guildwars2.com/file/F9EC00E23F630D6DB20CDA985592EC010E2A5705/156641.png",
   "specializations": [
@@ -3511,9 +3511,8 @@
     "76582": {
       "id": 76582,
       "name": "Metal Legion Guitar",
-      "slot": "Weapon_1",
-      "type": "Weapon",
-      "weaponType": "Nothing",
+      "slot": "Profession_2",
+      "type": "Profession",
       "flags": [
         "NoUnderwater"
       ],
@@ -3546,9 +3545,8 @@
     "76674": {
       "id": 76674,
       "name": "Holo-Dancer Decoy",
-      "slot": "Weapon_1",
-      "type": "Weapon",
-      "weaponType": "Nothing",
+      "slot": "Profession_2",
+      "type": "Profession",
       "flags": [
         "GroundTargeted",
         "NoUnderwater"
@@ -4936,6 +4934,10 @@
     [
       7700,
       79766
+    ],
+    [
+      7746,
+      80908
     ]
   ]
 }

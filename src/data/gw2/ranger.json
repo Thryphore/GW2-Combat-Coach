@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-14",
+  "generatedAt": "2026-09-21",
   "profession": "Ranger",
   "icon": "https://render.guildwars2.com/file/49B10316B424F4E20139EB5E51ADCF24A8724E9B/156640.png",
   "specializations": [
@@ -2608,7 +2608,6 @@
       "name": "Worldly Impact",
       "slot": "Profession_3",
       "type": "Profession",
-      "specialization": 55,
       "flags": [
         "NoUnderwater"
       ],
@@ -2878,6 +2877,7 @@
       "name": "Prelude Lash",
       "slot": "Profession_3",
       "type": "Profession",
+      "specialization": 55,
       "icon": "https://render.guildwars2.com/file/6BE209FCDE6DB2A802F54910DB73C0B70FF0E91B/1770563.png",
       "description": "Beast. Pull foes toward you and bind them briefly.",
       "rechargeSec": 25
@@ -4322,6 +4322,34 @@
       "icon": "https://render.guildwars2.com/file/E839D32DEC66ACF974A59478370BA810C54CCC5D/3772575.png",
       "description": "Dash at your foe with a wave of water.",
       "rechargeSec": 24
+    },
+    "80985": {
+      "id": 80985,
+      "name": "Vampiric Predation",
+      "slot": "Profession_2",
+      "type": "Profession",
+      "specialization": 55,
+      "flags": [
+        "NoUnderwater"
+      ],
+      "icon": "https://render.guildwars2.com/file/D7D21313F85BCD6438DFD194E76136199D033960/3807299.png",
+      "description": "Swoop at your foe, siphoning their vitality.",
+      "rechargeSec": 12,
+      "comboFinisher": "Leap",
+      "finisherPercent": 100
+    },
+    "81024": {
+      "id": 81024,
+      "name": "Enervate",
+      "slot": "Profession_1",
+      "type": "Profession",
+      "specialization": 55,
+      "flags": [
+        "NoUnderwater"
+      ],
+      "icon": "https://render.guildwars2.com/file/51BAA8D59843F7FD9F2BC662DF07E6A42EC12F01/3807297.png",
+      "description": "Drain your target of their energy, leaving them weakened.",
+      "rechargeSec": 15
     }
   },
   "weapons": {
@@ -5713,6 +5741,14 @@
     [
       7730,
       44626
+    ],
+    [
+      7745,
+      43375
+    ],
+    [
+      7746,
+      80908
     ]
   ]
 }
