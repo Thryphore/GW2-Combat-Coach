@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-28",
+  "generatedAt": "2026-10-05",
   "profession": "Thief",
   "icon": "https://render.guildwars2.com/file/F9EC00E23F630D6DB20CDA985592EC010E2A5705/156641.png",
   "specializations": [
@@ -3532,9 +3532,8 @@
     "76633": {
       "id": 76633,
       "name": "Forged Surfer Dash",
-      "slot": "Weapon_1",
-      "type": "Weapon",
-      "weaponType": "Nothing",
+      "slot": "Profession_2",
+      "type": "Profession",
       "flags": [
         "GroundTargeted",
         "NoUnderwater"
@@ -3545,9 +3544,8 @@
     "76674": {
       "id": 76674,
       "name": "Holo-Dancer Decoy",
-      "slot": "Weapon_1",
-      "type": "Weapon",
-      "weaponType": "Nothing",
+      "slot": "Profession_2",
+      "type": "Profession",
       "flags": [
         "GroundTargeted",
         "NoUnderwater"
@@ -3631,9 +3629,8 @@
     "76816": {
       "id": 76816,
       "name": "Chak Shield",
-      "slot": "Weapon_1",
-      "type": "Weapon",
-      "weaponType": "Nothing",
+      "slot": "Profession_2",
+      "type": "Profession",
       "icon": "https://render.guildwars2.com/file/4506224EB1921800602CAD52B6B209960FE51153/3680209.png",
       "description": "Defensive Artifact. Place an electrified shield at your position that blocks projectiles, dealing damage to enemies and granting barrier to allies within it.\n\nFor a short time after using this skill, your weapon skills that cost initiative refund initiative.",
       "comboField": "Light"
@@ -3722,9 +3719,8 @@
     "77192": {
       "id": 77192,
       "name": "Summon Kryptis Turret",
-      "slot": "Weapon_1",
-      "type": "Weapon",
-      "weaponType": "Nothing",
+      "slot": "Profession_2",
+      "type": "Profession",
       "flags": [
         "GroundTargeted",
         "NoUnderwater"
@@ -4912,6 +4908,10 @@
     [
       7528,
       76879
+    ],
+    [
+      7532,
+      76674
     ],
     [
       7535,
